@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f8fb;
+  --foreground: #10233f;
+  --card: #ffffff;
+  --muted: #edf2f7;
+  --muted-foreground: #52637c;
+  --primary: #1d5cff;
+  --primary-foreground: #ffffff;
+  --secondary: #dde8ff;
+  --border: #d7e2f0;
+  --surface-elevated: rgb(255 255 255 / 0.84);
+  --surface-strong: rgb(255 255 255 / 0.94);
+  --surface-border: rgb(215 226 240 / 0.92);
+  --surface-shadow: 0 24px 80px -36px rgb(16 35 63 / 0.2);
+  --page-background:
+    radial-gradient(circle at top, rgb(231 241 255 / 0.95), transparent 32%),
+    linear-gradient(180deg, #fbfdff 0%, #f6f8fb 56%, #eef3f9 100%);
+  --focus-ring: 0 0 0 4px rgb(29 92 255 / 0.16);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-border: var(--border);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--page-background);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 12% 14%, rgb(29 92 255 / 0.08), transparent 24%),
+    radial-gradient(circle at 88% 6%, rgb(14 165 168 / 0.08), transparent 18%);
+  pointer-events: none;
+}
+
+p {
+  color: var(--muted-foreground);
+  line-height: 1.65;
+}
+
+:where(h1, h2, h3, h4, h5, h6) {
+  color: var(--foreground);
+  letter-spacing: 0;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  outline: none;
+}
+
+:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.app-surface {
+  background: var(--surface-elevated);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.section-wrap {
+  width: min(100%, 84rem);
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 3vw, 2rem);
+}
