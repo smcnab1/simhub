@@ -37,7 +37,9 @@ export function DashboardNav() {
       icon: Settings2,
       children: [
         { label: "Facility", href: "/dashboard/admin/facility" },
+        { label: "Campuses", href: "/dashboard/admin/campuses"},
         { label: "Room Types", href: "/dashboard/admin/room-types" },
+        { label: "Rooms", href: "/dashboard/admin/rooms" },
         { label: "Request Form", href: "/dashboard/admin/forms" },
         { label: "Accounts", href: "/dashboard/admin/accounts" },
       ],
@@ -110,7 +112,9 @@ export function DashboardTopbar({ title = "Operations" }: { title?: string }) {
 export function AdminMenu() {
   const items = [
     ["Facility", "/dashboard/admin/facility"],
+    ["Campuses", "/dashboard/admin/campuses"],
     ["Room Types", "/dashboard/admin/room-types"],
+    ["Rooms", "/dashboard/admin/rooms"],
     ["Request Form", "/dashboard/admin/forms"],
     ["Accounts", "/dashboard/admin/accounts"],
   ];
