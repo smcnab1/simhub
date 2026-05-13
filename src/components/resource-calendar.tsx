@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Eye,
   EyeOff,
+  Calendar,
 } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -89,30 +90,6 @@ function addDays(date: Date, amount: number) {
   return next;
 }
 
-function addWeeks(date: Date, amount: number) {
-  return addDays(date, amount * 7);
-}
-
-function addMonths(date: Date, amount: number) {
-  const next = new Date(date);
-  next.setMonth(next.getMonth() + amount);
-  return next;
-}
-
-function addYears(date: Date, amount: number) {
-  const next = new Date(date);
-  next.setFullYear(next.getFullYear() + amount);
-  return next;
-}
-
-function getMonthDays(date: Date) {
-  const total = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  return Array.from(
-    { length: total },
-    (_, i) => new Date(date.getFullYear(), date.getMonth(), i + 1)
-  );
-}
-
 function formatDateUK(date: Date) {
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
@@ -122,9 +99,10 @@ function formatDateUK(date: Date) {
   }).format(date);
 }
 
-function formatMonthYearUK(date: Date) {
+function formatShortDateUK(date: Date) {
   return new Intl.DateTimeFormat("en-GB", {
-    month: "long",
+    day: "numeric",
+    month: "short",
     year: "numeric",
   }).format(date);
 }
@@ -194,27 +172,6 @@ function bookingChipClass(status: string) {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function NavButton({
-  onClick,
-  children,
-  ariaLabel,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  ariaLabel?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-blue-50 hover:text-blue-700"
-    >
-      {children}
-    </button>
-  );
-}
 
 function FilterToggle({
   active,
@@ -477,7 +434,6 @@ export function ResourceCalendar() {
     rooms === undefined || campuses === undefined || requests === undefined;
 
   const selectedDateString = isoDate(selectedDate);
-  const monthDays = useMemo(() => getMonthDays(selectedDate), [selectedDate]);
 
   // All unique room type names for the filter dropdown
   const roomTypeNames = useMemo(() => {
@@ -611,7 +567,7 @@ export function ResourceCalendar() {
   const hourCount = hours.length;
 
   return (
-    <>
+    <div className="flex w-full flex-col gap-6">
       <SectionHeader
         title="Resource Calendar"
         eyebrow="Operations"
@@ -631,16 +587,66 @@ export function ResourceCalendar() {
       />
 
       <Card>
-        {/* ── Date summary ──────────────────────────────────────────── */}
-        <div className="mb-5 grid gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-balance font-bold text-slate-950">
+        {/* ── Compact toolbar ──────────────────────────────────────────── */}
+        <div className="mb-5 flex flex-col gap-4">
+          {/* Row 1: Date navigation (sleek) */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Left: prev/next and date display */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedDate(addDays(selectedDate, -1))}
+                aria-label="Previous day"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-100 bg-white text-slate-600 shadow-sm hover:bg-blue-50 hover:text-blue-700"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+
+              {/* Date picker trigger */}
+              <div className="relative">
+                <input
+                  type="date"
+                  value={selectedDateString}
+                  onChange={(e) => {
+                    const d = new Date(e.target.value + "T00:00:00");
+                    if (!isNaN(d.getTime())) setSelectedDate(d);
+                  }}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  aria-label="Select date"
+                />
+                <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2 shadow-sm">
+                  <Calendar className="size-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-slate-900">
+                    {formatShortDateUK(selectedDate)}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedDate(addDays(selectedDate, 1))}
+                aria-label="Next day"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-100 bg-white text-slate-600 shadow-sm hover:bg-blue-50 hover:text-blue-700"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedDate(startOfToday())}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700"
+              >
+                Today
+              </button>
+            </div>
+
+            {/* Center: Full date display */}
+            <div className="hidden text-center md:block">
+              <h2 className="text-lg font-bold text-slate-900">
                 {formatDateUK(selectedDate)}
               </h2>
-              <p className="text-sm text-slate-500">
-                {bookingsForDay.length} booking{bookingsForDay.length !== 1 ? "s" : ""} ·{" "}
-                {totalRooms} room{totalRooms !== 1 ? "s" : ""}
+              <p className="text-xs text-slate-500">
+                {bookingsForDay.length} booking{bookingsForDay.length !== 1 ? "s" : ""} · {totalRooms} room{totalRooms !== 1 ? "s" : ""}
                 {unallocatedBookings.length > 0 && (
                   <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                     <AlertTriangle className="size-3" />
@@ -650,139 +656,18 @@ export function ResourceCalendar() {
               </p>
             </div>
 
-            {/* ── Navigation buttons ─────────────────────────────────── */}
-            <div className="flex flex-wrap gap-1.5">
-              {/* Year nav */}
-              <div className="flex items-center gap-0.5">
-                <NavButton onClick={() => setSelectedDate(addYears(selectedDate, -1))}>
-                  <ChevronLeft className="size-3" />
-                  <ChevronLeft className="-ml-2 size-3" />
-                  Yr
-                </NavButton>
-                <NavButton onClick={() => setSelectedDate(addYears(selectedDate, 1))}>
-                  Yr
-                  <ChevronRight className="size-3" />
-                  <ChevronRight className="-ml-2 size-3" />
-                </NavButton>
-              </div>
+            {/* Right: Filters */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Status filters */}
+              <FilterToggle active={showPending} onClick={() => setShowPending((v) => !v)}>
+                Pending
+              </FilterToggle>
+              <FilterToggle active={showApproved} onClick={() => setShowApproved((v) => !v)}>
+                Approved
+              </FilterToggle>
 
-              {/* Month nav */}
-              <div className="flex items-center gap-0.5">
-                <NavButton
-                  onClick={() => setSelectedDate(addMonths(selectedDate, -1))}
-                  ariaLabel="Previous month"
-                >
-                  <ChevronLeft className="size-3" /> Mo
-                </NavButton>
-                <NavButton
-                  onClick={() => setSelectedDate(addMonths(selectedDate, 1))}
-                  ariaLabel="Next month"
-                >
-                  Mo <ChevronRight className="size-3" />
-                </NavButton>
-              </div>
-
-              {/* Week nav */}
-              <div className="flex items-center gap-0.5">
-                <NavButton
-                  onClick={() => setSelectedDate(addWeeks(selectedDate, -1))}
-                  ariaLabel="Previous week"
-                >
-                  <ChevronLeft className="size-3" /> Wk
-                </NavButton>
-                <NavButton
-                  onClick={() => setSelectedDate(addWeeks(selectedDate, 1))}
-                  ariaLabel="Next week"
-                >
-                  Wk <ChevronRight className="size-3" />
-                </NavButton>
-              </div>
-
-              {/* Day nav + Today */}
-              <div className="flex items-center gap-0.5">
-                <NavButton
-                  onClick={() => setSelectedDate(addDays(selectedDate, -1))}
-                  ariaLabel="Previous day"
-                >
-                  <ChevronLeft className="size-3" />
-                </NavButton>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedDate(startOfToday())}
-                  className="rounded-lg border border-blue-600 bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                >
-                  Today
-                </button>
-
-                <NavButton
-                  onClick={() => setSelectedDate(addDays(selectedDate, 1))}
-                  ariaLabel="Next day"
-                >
-                  <ChevronRight className="size-3" />
-                </NavButton>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Month day strip ──────────────────────────────────────── */}
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {formatMonthYearUK(selectedDate)}
-            </p>
-            <div className="flex max-w-full gap-1.5 overflow-x-auto pb-1">
-              {monthDays.map((day) => {
-                const ds = isoDate(day);
-                const isSelected = ds === selectedDateString;
-                const hasBooking = (requests as CalendarRequest[] | undefined)?.some(
-                  (req) =>
-                    isVisibleBooking(req) &&
-                    req.blocks.some((b) => b.start.slice(0, 10) === ds)
-                );
-                return (
-                  <button
-                    key={day.toISOString()}
-                    type="button"
-                    onClick={() => setSelectedDate(day)}
-                    aria-pressed={isSelected}
-                    aria-label={formatDateUK(day)}
-                    className={`relative size-10 shrink-0 rounded-xl border text-sm font-semibold transition-colors ${
-                      isSelected
-                        ? "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-600/20"
-                        : "border-blue-100 bg-white/80 text-slate-700 hover:bg-blue-50"
-                    }`}
-                  >
-                    {day.getDate()}
-                    {hasBooking ? (
-                      <span
-                        className={`absolute bottom-1 left-1/2 size-1.5 -translate-x-1/2 rounded-full ${
-                          isSelected ? "bg-white" : "bg-blue-600"
-                        }`}
-                      />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ── Filters + campus controls ────────────────────────────── */}
-          <div className="flex flex-wrap items-center gap-2 border-t border-blue-50 pt-3">
-            {/* Status filters */}
-            <span className="text-xs font-medium text-slate-500">Status:</span>
-            <FilterToggle active={showPending} onClick={() => setShowPending((v) => !v)}>
-              Pending
-            </FilterToggle>
-            <FilterToggle active={showApproved} onClick={() => setShowApproved((v) => !v)}>
-              Approved
-            </FilterToggle>
-
-            {/* Room type filter */}
-            {roomTypeNames.length > 0 && (
-              <>
-                <span className="ml-2 text-xs font-medium text-slate-500">
-                  Room type:
-                </span>
+              {/* Room type filter */}
+              {roomTypeNames.length > 0 && (
                 <div className="relative">
                   <select
                     value={roomTypeFilter}
@@ -798,13 +683,13 @@ export function ResourceCalendar() {
                   </select>
                   <LayoutGrid className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-slate-400" />
                 </div>
-              </>
-            )}
+              )}
+            </div>
+          </div>
 
-            {/* Campus collapse controls */}
-            <span className="ml-2 text-xs font-medium text-slate-500">
-              Campuses:
-            </span>
+          {/* Row 2: Campus controls (compact) */}
+          <div className="flex flex-wrap items-center gap-2 border-t border-blue-50 pt-3">
+            <span className="text-xs font-medium text-slate-500">Campuses:</span>
             <button
               type="button"
               onClick={expandAll}
@@ -834,6 +719,14 @@ export function ResourceCalendar() {
                 <Eye className="size-3" /> Show all
               </button>
             )}
+
+            {/* Mobile date summary */}
+            <div className="ml-auto text-right md:hidden">
+              <p className="text-sm font-bold text-slate-900">{formatShortDateUK(selectedDate)}</p>
+              <p className="text-xs text-slate-500">
+                {bookingsForDay.length} booking{bookingsForDay.length !== 1 ? "s" : ""}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -856,9 +749,10 @@ export function ResourceCalendar() {
             {/* ── Calendar grid ─────────────────────────────────────── */}
             <div className="overflow-x-auto">
               <div
-                className="grid min-w-[1060px]"
+                className="grid"
                 style={{
-                  gridTemplateColumns: `260px repeat(${hourCount}, minmax(82px, 1fr))`,
+                  gridTemplateColumns: `200px repeat(${hourCount}, minmax(0, 1fr))`,
+                  minWidth: `${200 + hourCount * 80}px`,
                 }}
                 role="grid"
                 aria-label="Resource calendar"
@@ -960,6 +854,6 @@ export function ResourceCalendar() {
           </>
         )}
       </Card>
-    </>
+    </div>
   );
 }
