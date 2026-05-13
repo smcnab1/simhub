@@ -161,11 +161,9 @@ export function BookingWizard() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-slate-950">{room.name}</p>
-                    <p className="text-sm text-slate-500">Capacity {room.capacity}</p>
                   </div>
-                  <input name={`room:${room._id}`} type="number" min="0" max={room.quantity} defaultValue={0} className="w-16 rounded-xl border border-blue-100 px-2 py-1 text-sm" />
                 </div>
-                <p className="mt-3 text-sm text-slate-600">Max {room.maxDurationHours}h · {room.quantity} available {room.isSpecial ? "· special type" : ""}</p>
+                <p className="mt-3 text-sm text-slate-600">Max {room.maxDurationHours}h · {room.isSpecial ? "· special type" : ""}</p>
               </label>
             ))}
           </div>
