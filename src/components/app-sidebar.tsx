@@ -7,6 +7,7 @@ import type { DashboardAuth } from "@/components/dashboard-auth"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -117,29 +118,32 @@ export function AppSidebar({
                 side="right"
                 sideOffset={4}
               >
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  Tenant workspace
-                </DropdownMenuLabel>
-                {memberships.map((membership) => (
-                  <form key={membership.tenantSlug} action={switchTenant}>
-                    <input
-                      type="hidden"
-                      name="tenantSlug"
-                      value={membership.tenantSlug}
-                    />
-                    <button className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
-                      <span className="flex size-6 items-center justify-center rounded-sm border">
-                        <ShieldCheckIcon className="size-3.5" />
-                      </span>
-                      <span className="grid min-w-0 flex-1">
-                        <span className="truncate">{membership.tenantName}</span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          {membership.role}
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    Tenant Workspace
+                  </DropdownMenuLabel>
+
+                  {memberships.map((membership) => (
+                    <form key={membership.tenantSlug} action={switchTenant}>
+                      <input
+                        type="hidden"
+                        name="tenantSlug"
+                        value={membership.tenantSlug}
+                      />
+                      <button className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+                        <span className="flex size-6 items-center justify-center rounded-sm border">
+                          <ShieldCheckIcon className="size-3.5" />
                         </span>
-                      </span>
-                    </button>
-                  </form>
-                ))}
+                        <span className="grid min-w-0 flex-1">
+                          <span className="truncate">{membership.tenantName}</span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {membership.role}
+                          </span>
+                        </span>
+                      </button>
+                    </form>
+                  ))}
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
