@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { DashboardNav, DashboardTopbar } from "@/components/ui";
 import { canUseDashboard, getCurrentUser, roleFromWorkOS } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentUser();
   const role = roleFromWorkOS(session);
