@@ -4,6 +4,7 @@ import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authContextValidator, requireStaff, tenantBySlug } from "./authz";
+import { hasBookingConflict } from "../src/lib/booking-logic";
 
 async function withAssignedRooms(ctx: QueryCtx, request: Doc<"bookingRequests">) {
   const rooms = await Promise.all(request.assignedRoomIds.map((roomId: Id<"rooms">) => ctx.db.get(roomId)));
@@ -150,11 +151,7 @@ export const validateAvailability = action({
   },
   handler: async (ctx, args): Promise<{ available: boolean; reason?: string }> => {
     const approved = await ctx.runQuery(api.bookings.internalApprovedRequests, { tenantId: args.tenantId });
-    const hasConflict = approved.some((request) =>
-      request.blocks.some((existing) =>
-        args.blocks.some((candidate) => new Date(candidate.start) < new Date(existing.end) && new Date(existing.start) < new Date(candidate.end)),
-      ),
-    );
+    const hasConflict = hasBookingConflict(args.blocks, approved);
     return hasConflict ? { available: false, reason: "Requested time overlaps an approved booking or blocked time." } : { available: true };
   },
 });
