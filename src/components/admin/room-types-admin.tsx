@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -152,20 +152,20 @@ function RoomTypeFormDialog({
   );
   const [saving, setSaving] = useState(false);
 
-  const [lastId, setLastId] = useState<string | null>(null);
-  if (editing?._id !== lastId) {
-    setLastId(editing?._id ?? null);
-    setCampusId(editing?.campusId ?? "");
-    setName(editing?.name ?? "");
-    setDescription(editing?.description ?? "");
-    setDefaultCapacity(String(editing?.defaultCapacity ?? 1));
-    setMaxDuration(
-      editing?.maxDurationHours != null ? String(editing.maxDurationHours) : ""
-    );
-    setIsSpecial(editing?.isSpecial ?? false);
-    setActive(editing?.active ?? true);
-    setSortOrder(editing?.sortOrder != null ? String(editing.sortOrder) : "");
-  }
+  useEffect(() => {
+    if (open) {
+      setCampusId(editing?.campusId ?? "");
+      setName(editing?.name ?? "");
+      setDescription(editing?.description ?? "");
+      setDefaultCapacity(String(editing?.defaultCapacity ?? 1));
+      setMaxDuration(
+        editing?.maxDurationHours != null ? String(editing.maxDurationHours) : ""
+      );
+      setIsSpecial(editing?.isSpecial ?? false);
+      setActive(editing?.active ?? true);
+      setSortOrder(editing?.sortOrder != null ? String(editing.sortOrder) : "");
+    }
+  }, [open, editing]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

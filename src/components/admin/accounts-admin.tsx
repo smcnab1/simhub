@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -117,13 +117,11 @@ function UserForm({ editing, onSave, onCancel }: UserFormProps) {
   const [role, setRole] = useState<Role>(editing?.role ?? "Staff");
   const [saving, setSaving] = useState(false);
 
-  const [lastId, setLastId] = useState<string | null>(null);
-  if (editing?._id !== lastId) {
-    setLastId(editing?._id ?? null);
+  useEffect(() => {
     setName(editing?.name ?? "");
     setEmail(editing?.email ?? "");
     setRole(editing?.role ?? "Staff");
-  }
+  }, [editing]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

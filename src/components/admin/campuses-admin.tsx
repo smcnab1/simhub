@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -118,13 +118,13 @@ function CampusFormDialog({
   const [saving, setSaving] = useState(false);
 
   // Reset when editing changes
-  const [lastEditingId, setLastEditingId] = useState<string | null>(null);
-  if (editing?._id !== lastEditingId) {
-    setLastEditingId(editing?._id ?? null);
-    setName(editing?.name ?? "");
-    setActive(editing?.active ?? true);
-    setSortOrder(editing?.sortOrder != null ? String(editing.sortOrder) : "");
-  }
+  useEffect(() => {
+    if (open) {
+      setName(editing?.name ?? "");
+      setActive(editing?.active ?? true);
+      setSortOrder(editing?.sortOrder != null ? String(editing.sortOrder) : "");
+    }
+  }, [open, editing]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

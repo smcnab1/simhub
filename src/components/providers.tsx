@@ -15,14 +15,14 @@ export function Providers({ children }: { children: ReactNode }) {
 
   if (!convex)
     return (
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
         {children}
         <Toaster />
       </ThemeProvider>
     );
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
       <ConvexProvider client={convex}>
         {children}
         <Toaster />

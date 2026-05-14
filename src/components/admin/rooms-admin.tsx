@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -225,17 +225,17 @@ function RoomFormDialog({
   const [active, setActive] = useState(editing?.active ?? true);
   const [saving, setSaving] = useState(false);
 
-  const [lastId, setLastId] = useState<string | null>(null);
-  if (editing?._id !== lastId) {
-    setLastId(editing?._id ?? null);
-    setCampusId(editing?.campusId ?? "");
-    setRoomTypeId(editing?.roomTypeId ?? "");
-    setCode(editing?.code ?? "");
-    setName(editing?.name ?? "");
-    setDescription(editing?.description ?? "");
-    setCapacity(String(editing?.capacity ?? 1));
-    setActive(editing?.active ?? true);
-  }
+  useEffect(() => {
+    if (open) {
+      setCampusId(editing?.campusId ?? "");
+      setRoomTypeId(editing?.roomTypeId ?? "");
+      setCode(editing?.code ?? "");
+      setName(editing?.name ?? "");
+      setDescription(editing?.description ?? "");
+      setCapacity(String(editing?.capacity ?? 1));
+      setActive(editing?.active ?? true);
+    }
+  }, [open, editing]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
