@@ -46,7 +46,7 @@ export const getRequest = query({
     }
     const withRooms = await withAssignedRooms(ctx, request);
     const comments = await ctx.db.query("comments").withIndex("by_request", (q) => q.eq("requestId", args.requestId)).collect();
-    return { ...withRooms, comments };
+    return { ...withRooms, comments: args.tenantSlug ? comments : comments.filter((comment) => !comment.internal) };
   },
 });
 

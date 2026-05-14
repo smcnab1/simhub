@@ -59,7 +59,7 @@ export const listMembershipsForAuth = query({
 export const getPrivateTenant = query({
   args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
     return tenant;
   },
 });
@@ -691,7 +691,7 @@ export const getFormConfig = query({
 export const getPrivateFormConfig = query({
   args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
 
     return await ctx.db
       .query("formConfigs")

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Bell, Building2, CalendarDays, ChevronRight, ClipboardList, LayoutDashboard, LifeBuoy, Settings2, ShieldCheck } from "lucide-react";
 import clsx from "clsx";
+import type { Role } from "@/lib/domain";
 
 export function PageShell({ children }: { children: ReactNode }) {
   return <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">{children}</main>;
@@ -25,7 +26,7 @@ export function PublicNav() {
   );
 }
 
-export function DashboardNav() {
+export function DashboardNav({ role }: { role?: Role }) {
   const items = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Requests", href: "/dashboard/requests", icon: ClipboardList },
@@ -45,6 +46,7 @@ export function DashboardNav() {
       ],
     },
   ];
+  const visibleItems = items.filter((item) => item.label !== "Admin" || role === "Admin");
 
   return (
     <aside className="border-blue-100 bg-[#f3f7fc]/95 p-3 backdrop-blur-xl lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-r">
@@ -60,7 +62,7 @@ export function DashboardNav() {
       <div className="mt-5 rounded-2xl border border-blue-100 bg-white/70 p-2 shadow-sm">
         <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Navigation</p>
         <nav className="grid gap-1 text-sm">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <div key={item.href}>
               <Link href={item.href} className="flex items-center gap-3 rounded-xl px-3 py-2.5 font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700">
                 <item.icon className="size-4" />

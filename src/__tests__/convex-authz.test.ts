@@ -237,4 +237,30 @@ describe("Convex tenant authz helpers", () => {
         return true;
       });
   });
+
+  it("rejects staff users from admin checks", async () => {
+    const ctx = createCtx({
+      identity: { subject: "user_123", email: "staff@example.com" },
+      tenants: [tenant],
+      users: [
+        {
+          _id: "user_1",
+          tenantId: tenant._id,
+          workosUserId: "user_123",
+          email: "staff@example.com",
+          role: "Staff",
+        },
+      ],
+    });
+
+    await expect(
+      requireAdmin(ctx as never, "demo", {
+        workosUserId: "user_123",
+        email: "staff@example.com",
+      })
+    ).rejects.toSatisfy((error: unknown) => {
+      expectConvexCode(error, "insufficient_role");
+      return true;
+    });
+  });
 });
