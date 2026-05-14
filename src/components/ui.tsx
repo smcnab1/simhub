@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Bell, Building2, CalendarDays, ChevronRight, ClipboardList, LayoutDashboard, LifeBuoy, Settings2, ShieldCheck } from "lucide-react";
+import { CalendarDays, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 
 export function PageShell({ children }: { children: ReactNode }) {
@@ -22,75 +22,6 @@ export function PublicNav() {
         </div>
       </nav>
     </header>
-  );
-}
-
-export function DashboardNav() {
-  const items = [
-    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Requests", href: "/dashboard/requests", icon: ClipboardList },
-    { label: "Calendar", href: "/dashboard/resource-calendar", icon: CalendarDays },
-    { label: "Notifications", href: "/dashboard/notifications", icon: Bell },
-    {
-      label: "Admin",
-      href: "/dashboard/admin/facility",
-      icon: Settings2,
-      children: [
-        { label: "Facility", href: "/dashboard/admin/facility" },
-        { label: "Campuses", href: "/dashboard/admin/campuses"},
-        { label: "Room Types", href: "/dashboard/admin/room-types" },
-        { label: "Rooms", href: "/dashboard/admin/rooms" },
-        { label: "Request Form", href: "/dashboard/admin/forms" },
-        { label: "Accounts", href: "/dashboard/admin/accounts" },
-      ],
-    },
-  ];
-
-  return (
-    <aside className="border-blue-100 bg-[#f3f7fc]/95 p-3 backdrop-blur-xl lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-r">
-      <Link href="/dashboard" className="flex items-center gap-3 rounded-2xl px-2 py-3 text-base font-bold">
-        <span className="grid size-10 place-items-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
-          <ShieldCheck className="size-5" />
-        </span>
-        <span>
-          SimHub Ops
-          <span className="block text-xs font-medium text-slate-500">Simulation Centre</span>
-        </span>
-      </Link>
-      <div className="mt-5 rounded-2xl border border-blue-100 bg-white/70 p-2 shadow-sm">
-        <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Navigation</p>
-        <nav className="grid gap-1 text-sm">
-          {items.map((item) => (
-            <div key={item.href}>
-              <Link href={item.href} className="flex items-center gap-3 rounded-xl px-3 py-2.5 font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700">
-                <item.icon className="size-4" />
-                {item.label}
-              </Link>
-              {item.children ? (
-                <div className="ml-8 mt-1 grid gap-1 border-l border-blue-100 pl-2">
-                  {item.children.map((child) => (
-                    <Link key={child.href} href={child.href} className="rounded-lg px-3 py-2 text-xs font-medium text-slate-500 hover:bg-blue-50 hover:text-blue-700">
-                      {child.label}
-                    </Link>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </nav>
-      </div>
-      <div className="mt-4 rounded-2xl border border-blue-100 bg-white/70 p-4 text-sm shadow-sm">
-        <div className="flex items-center gap-2 font-semibold text-slate-900">
-          <Building2 className="size-4 text-blue-600" />
-          Tenant workspace
-        </div>
-        <p className="mt-1 text-xs text-slate-500">Live Convex tenant</p>
-      </div>
-      <Link href="mailto:simulation@example.edu" className="mt-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700">
-        <LifeBuoy className="size-4" />
-        Help desk
-      </Link>
-    </aside>
   );
 }
 
