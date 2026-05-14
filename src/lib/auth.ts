@@ -1,6 +1,7 @@
 import { decodeJwt } from "jose";
 import { cookies } from "next/headers";
 import { unsealData } from "iron-session";
+import { canAccessStaff } from "./authz-logic";
 import type { Role } from "./domain";
 
 type WorkOSRoleSource = {
@@ -80,5 +81,5 @@ export function roleFromWorkOS(source?: WorkOSRoleSource): Role {
 }
 
 export function canUseDashboard(role: Role) {
-  return role === "Admin" || role === "Staff";
+  return canAccessStaff(role);
 }
