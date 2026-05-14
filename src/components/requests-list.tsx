@@ -2,14 +2,16 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useDashboardAuth } from "@/components/dashboard-auth";
 import { RequestCard, SectionHeader } from "@/components/ui";
-import { TENANT_SLUG } from "@/lib/config";
 import { formatRequestDate, formatRooms } from "@/lib/format";
 
 const statuses = ["Pending", "Approved", "Completed", "Declined", "Cancelled"];
 
 export function RequestsList() {
-  const requests = useQuery(api.bookings.listRequests, { tenantSlug: TENANT_SLUG });
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
+  const requests = useQuery(api.bookings.listRequests, { tenantSlug, auth });
 
   return (
     <>

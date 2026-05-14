@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { requireAdmin, requireStaff, tenantBySlug } from "./authz";
+import { authContextValidator, membershipsForAuth, requireAdmin, requireStaff, tenantBySlug } from "./authz";
 
 async function getRoomCountForRoomType(
   ctx: QueryCtx,
@@ -38,10 +38,28 @@ export const getBySlug = query({
       .unique(),
 });
 
-export const getPrivateTenant = query({
-  args: { tenantSlug: v.string() },
+export const listMembershipsForAuth = query({
+  args: { auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const memberships = await membershipsForAuth(ctx, args.auth);
+
+    return memberships
+      .map(({ tenant, user }) => ({
+        tenantId: tenant._id,
+        tenantName: tenant.name,
+        tenantSlug: tenant.slug,
+        workosOrganizationId: tenant.workosOrganizationId,
+        userId: user._id,
+        role: user.role,
+      }))
+      .sort((a, b) => a.tenantName.localeCompare(b.tenantName));
+  },
+});
+
+export const getPrivateTenant = query({
+  args: { tenantSlug: v.string(), auth: authContextValidator },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
     return tenant;
   },
 });
@@ -79,10 +97,11 @@ export const listCampuses = query({
 export const listPrivateCampuses = query({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     activeOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
 
     const campuses = await ctx.db
       .query("campuses")
@@ -106,13 +125,14 @@ export const listPrivateCampuses = query({
 export const upsertCampus = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     campusId: v.optional(v.id("campuses")),
     name: v.string(),
     active: v.optional(v.boolean()),
     sortOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
 
     const name = args.name.trim();
 
@@ -145,10 +165,11 @@ export const upsertCampus = mutation({
 export const deleteCampus = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     campusId: v.id("campuses"),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
     const campus = await ctx.db.get(args.campusId);
 
     if (!campus || campus.tenantId !== tenant._id) {
@@ -246,11 +267,12 @@ export const listRoomTypes = query({
 export const listPrivateRoomTypes = query({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     campusId: v.optional(v.id("campuses")),
     activeOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
 
     const roomTypes = args.campusId
       ? await ctx.db
@@ -301,6 +323,7 @@ export const listPrivateRoomTypes = query({
 export const upsertRoomType = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     roomTypeId: v.optional(v.id("roomTypes")),
     campusId: v.optional(v.id("campuses")),
     name: v.string(),
@@ -312,7 +335,7 @@ export const upsertRoomType = mutation({
     sortOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
     const now = Date.now();
 
     if (args.campusId) {
@@ -371,10 +394,11 @@ export const upsertRoomType = mutation({
 export const deleteRoomType = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     roomTypeId: v.id("roomTypes"),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
     const roomType = await ctx.db.get(args.roomTypeId);
 
     if (!roomType || roomType.tenantId !== tenant._id) {
@@ -466,12 +490,13 @@ export const listRooms = query({
 export const listPrivateRooms = query({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     campusId: v.optional(v.id("campuses")),
     roomTypeId: v.optional(v.id("roomTypes")),
     activeOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
 
     const { campusId, roomTypeId } = args;
 
@@ -521,6 +546,7 @@ export const listPrivateRooms = query({
 export const upsertRoom = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     roomId: v.optional(v.id("rooms")),
     campusId: v.optional(v.id("campuses")),
     roomTypeId: v.id("roomTypes"),
@@ -532,7 +558,7 @@ export const upsertRoom = mutation({
     active: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
     const now = Date.now();
 
     const roomType = await ctx.db.get(args.roomTypeId);
@@ -609,10 +635,11 @@ export const upsertRoom = mutation({
 export const deleteRoom = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     roomId: v.id("rooms"),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
     const room = await ctx.db.get(args.roomId);
 
     if (!room || room.tenantId !== tenant._id) {
@@ -662,9 +689,9 @@ export const getFormConfig = query({
 });
 
 export const getPrivateFormConfig = query({
-  args: { tenantSlug: v.string() },
+  args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
 
     return await ctx.db
       .query("formConfigs")
@@ -694,11 +721,12 @@ const formFieldValidator = v.object({
 export const upsertFormConfig = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     fileUploadEnabled: v.boolean(),
     fields: v.array(formFieldValidator),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
 
     const existing = await ctx.db
       .query("formConfigs")
@@ -725,9 +753,9 @@ export const upsertFormConfig = mutation({
  */
 
 export const listUsers = query({
-  args: { tenantSlug: v.string() },
+  args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
 
     return await ctx.db
       .query("users")
@@ -739,6 +767,7 @@ export const listUsers = query({
 export const upsertFacilityDetails = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     name: v.string(),
     contactEmail: v.string(),
     notificationEmails: v.array(v.string()),
@@ -747,7 +776,7 @@ export const upsertFacilityDetails = mutation({
     logoStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
 
     await ctx.db.patch(tenant._id, {
       name: args.name,
@@ -763,6 +792,7 @@ export const upsertFacilityDetails = mutation({
 export const upsertUser = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     userId: v.optional(v.id("users")),
     name: v.string(),
     email: v.string(),
@@ -773,7 +803,7 @@ export const upsertUser = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
     const email = args.email.trim().toLowerCase();
 
     const payload = {
@@ -814,10 +844,11 @@ export const upsertUser = mutation({
 export const deleteUser = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireAdmin(ctx, args.tenantSlug);
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
     const user = await ctx.db.get(args.userId);
 
     if (!user || user.tenantId !== tenant._id) {
@@ -827,4 +858,3 @@ export const deleteUser = mutation({
     await ctx.db.delete(args.userId);
   },
 });
-

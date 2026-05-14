@@ -2,13 +2,15 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useDashboardAuth } from "@/components/dashboard-auth";
 import { Metric, RequestCard, SectionHeader } from "@/components/ui";
-import { TENANT_SLUG } from "@/lib/config";
 import { formatRequestDate, formatRooms } from "@/lib/format";
 
 export function DashboardHome() {
-  const summary = useQuery(api.bookings.dashboardSummary, { tenantSlug: TENANT_SLUG });
-  const requests = useQuery(api.bookings.listRequests, { tenantSlug: TENANT_SLUG });
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
+  const summary = useQuery(api.bookings.dashboardSummary, { tenantSlug, auth });
+  const requests = useQuery(api.bookings.listRequests, { tenantSlug, auth });
 
   return (
     <>

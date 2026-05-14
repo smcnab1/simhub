@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
-import { TENANT_SLUG } from "@/lib/config";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -418,16 +418,21 @@ export function ResourceCalendar() {
   const [roomTypeFilter, setRoomTypeFilter] = useState<string>("all");
 
   // Data
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
   const rooms = useQuery(api.tenants.listPrivateRooms, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
     activeOnly: true,
   });
   const campuses = useQuery(api.tenants.listPrivateCampuses, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
     activeOnly: true,
   });
   const requests = useQuery(api.bookings.listRequests, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
   });
 
   const isLoading =

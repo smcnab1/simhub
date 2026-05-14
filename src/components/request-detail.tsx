@@ -4,12 +4,14 @@ import { FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
 import { formatRooms } from "@/lib/format";
-import { TENANT_SLUG } from "@/lib/config";
 
 export function RequestDetail({ id, publicView = false }: { id: string; publicView?: boolean }) {
-  const request = useQuery(api.bookings.getRequest, publicView ? { requestId: id as Id<"bookingRequests"> } : { tenantSlug: TENANT_SLUG, requestId: id as Id<"bookingRequests"> });
+  const auth = useOptionalDashboardAuth();
+  const tenantSlug = auth?.tenantSlug ?? "";
+  const request = useQuery(api.bookings.getRequest, publicView ? { requestId: id as Id<"bookingRequests"> } : { tenantSlug, auth: auth ?? {}, requestId: id as Id<"bookingRequests"> });
   const updateStatus = useMutation(api.bookings.updateStatus);
   const addComment = useMutation(api.bookings.addComment);
 
@@ -18,7 +20,7 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
     const form = event.currentTarget;
     const bodyMarkdown = String(new FormData(form).get("comment") ?? "").trim();
     if (!bodyMarkdown) return;
-    await addComment({ tenantSlug: TENANT_SLUG, requestId: id as Id<"bookingRequests">, bodyMarkdown, internal: !publicView });
+    await addComment({ tenantSlug, auth: auth ?? {}, requestId: id as Id<"bookingRequests">, bodyMarkdown, internal: !publicView });
     form.reset();
   }
 
@@ -71,9 +73,9 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
             <Card>
               <h2 className="font-semibold">Workflow actions</h2>
               <div className="mt-3 grid gap-2">
-                <button onClick={() => updateStatus({ tenantSlug: TENANT_SLUG, requestId: request._id, status: "Approved" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Approve</button>
-                <button onClick={() => updateStatus({ tenantSlug: TENANT_SLUG, requestId: request._id, status: "Declined" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Decline</button>
-                <button onClick={() => updateStatus({ tenantSlug: TENANT_SLUG, requestId: request._id, status: "Pending" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Remain Pending</button>
+                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Approved" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Approve</button>
+                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Declined" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Decline</button>
+                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Pending" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Remain Pending</button>
               </div>
             </Card>
           ) : null}
