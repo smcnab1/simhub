@@ -5,8 +5,8 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { useDashboardAuth } from "@/components/dashboard-auth";
 import { AdminMenu, Card, SectionHeader, StatusPill } from "@/components/ui";
-import { TENANT_SLUG } from "@/lib/config";
 import type { FormFieldType, Role } from "@/lib/domain";
 
 const fieldTypes: FormFieldType[] = [
@@ -49,8 +49,11 @@ function optionalNumber(form: HTMLFormElement, name: string) {
 }
 
 export function FacilityAdmin() {
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
   const tenant = useQuery(api.tenants.getPrivateTenant, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
   });
   const saveFacility = useMutation(api.tenants.upsertFacilityDetails);
   const [status, setStatus] = useState("");
@@ -61,7 +64,8 @@ export function FacilityAdmin() {
     const form = event.currentTarget;
 
     await saveFacility({
-      tenantSlug: TENANT_SLUG,
+      tenantSlug,
+      auth,
       name: submitValue(form, "name"),
       contactEmail: submitValue(form, "contactEmail"),
       notificationEmails: parseEmails(submitValue(form, "notificationEmails")),
@@ -160,8 +164,11 @@ export function FacilityAdmin() {
 }
 
 export function CampusesAdmin() {
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
   const campuses = useQuery(api.tenants.listPrivateCampuses, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
     activeOnly: false,
   });
 
@@ -182,7 +189,8 @@ export function CampusesAdmin() {
     const formData = new FormData(form);
 
     await upsertCampus({
-      tenantSlug: TENANT_SLUG,
+      tenantSlug,
+      auth,
       campusId: editingId ?? undefined,
       name: submitValue(form, "name"),
       active: formData.get("active") === "on",
@@ -296,7 +304,8 @@ export function CampusesAdmin() {
                         type="button"
                         onClick={() =>
                           deleteCampus({
-                            tenantSlug: TENANT_SLUG,
+                            tenantSlug,
+                            auth,
                             campusId: campus._id,
                           })
                         }
@@ -324,13 +333,17 @@ export function CampusesAdmin() {
 }
 
 export function RoomTypesAdmin() {
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
   const campuses = useQuery(api.tenants.listPrivateCampuses, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
     activeOnly: false,
   });
 
   const roomTypes = useQuery(api.tenants.listPrivateRoomTypes, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
     activeOnly: false,
   });
 
@@ -352,7 +365,8 @@ export function RoomTypesAdmin() {
     const campusId = submitValue(form, "campusId");
 
     await upsertRoomType({
-      tenantSlug: TENANT_SLUG,
+      tenantSlug,
+      auth,
       roomTypeId: editingId ?? undefined,
       campusId: campusId ? (campusId as Id<"campuses">) : undefined,
       name: submitValue(form, "name"),
@@ -566,7 +580,8 @@ export function RoomTypesAdmin() {
                         type="button"
                         onClick={() =>
                           deleteRoomType({
-                            tenantSlug: TENANT_SLUG,
+                            tenantSlug,
+                            auth,
                             roomTypeId: roomType._id,
                           })
                         }
@@ -593,18 +608,23 @@ export function RoomTypesAdmin() {
 }
 
 export function RoomsAdmin() {
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
   const campuses = useQuery(api.tenants.listPrivateCampuses, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
     activeOnly: false,
   });
 
   const roomTypes = useQuery(api.tenants.listPrivateRoomTypes, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
     activeOnly: false,
   });
 
   const rooms = useQuery(api.tenants.listPrivateRooms, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
     activeOnly: false,
   });
 
@@ -630,7 +650,8 @@ export function RoomsAdmin() {
     if (!roomTypeId) return;
 
     await upsertRoom({
-      tenantSlug: TENANT_SLUG,
+      tenantSlug,
+      auth,
       roomId: editingId ?? undefined,
       campusId: campusId ? (campusId as Id<"campuses">) : undefined,
       roomTypeId: roomTypeId as Id<"roomTypes">,
@@ -829,7 +850,8 @@ export function RoomsAdmin() {
                         type="button"
                         onClick={() =>
                           deleteRoom({
-                            tenantSlug: TENANT_SLUG,
+                            tenantSlug,
+                            auth,
                             roomId: room._id,
                           })
                         }
@@ -857,8 +879,11 @@ export function RoomsAdmin() {
 }
 
 export function RequestFormAdmin() {
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
   const formConfig = useQuery(api.tenants.getPrivateFormConfig, {
-    tenantSlug: TENANT_SLUG,
+    tenantSlug,
+    auth,
   });
   const saveForm = useMutation(api.tenants.upsertFormConfig);
   const fields = formConfig?.fields ?? [];
@@ -867,7 +892,8 @@ export function RequestFormAdmin() {
 
   async function save() {
     await saveForm({
-      tenantSlug: TENANT_SLUG,
+      tenantSlug,
+      auth,
       fileUploadEnabled: Boolean(formConfig?.fileUploadEnabled),
       fields: activeFields,
     });
@@ -875,7 +901,8 @@ export function RequestFormAdmin() {
 
   async function toggleUploads(fileUploadEnabled: boolean) {
     await saveForm({
-      tenantSlug: TENANT_SLUG,
+      tenantSlug,
+      auth,
       fileUploadEnabled,
       fields: activeFields,
     });
@@ -1074,7 +1101,9 @@ export function RequestFormAdmin() {
 }
 
 export function AccountsAdmin() {
-  const users = useQuery(api.tenants.listUsers, { tenantSlug: TENANT_SLUG });
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
+  const users = useQuery(api.tenants.listUsers, { tenantSlug, auth });
   const upsertUser = useMutation(api.tenants.upsertUser);
   const deleteUser = useMutation(api.tenants.deleteUser);
   const [editingId, setEditingId] = useState<Id<"users"> | null>(null);
@@ -1086,7 +1115,8 @@ export function AccountsAdmin() {
     const form = event.currentTarget;
 
     await upsertUser({
-      tenantSlug: TENANT_SLUG,
+      tenantSlug,
+      auth,
       userId: editingId ?? undefined,
       name: submitValue(form, "name"),
       email: submitValue(form, "email"),
@@ -1168,7 +1198,8 @@ export function AccountsAdmin() {
                 <button
                   onClick={() =>
                     deleteUser({
-                      tenantSlug: TENANT_SLUG,
+                      tenantSlug,
+                      auth,
                       userId: user._id,
                     })
                   }
@@ -1190,4 +1221,3 @@ export function AccountsAdmin() {
     </>
   );
 }
-

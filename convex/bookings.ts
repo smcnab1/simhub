@@ -3,7 +3,7 @@ import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { requireStaff, tenantBySlug } from "./authz";
+import { authContextValidator, requireStaff, tenantBySlug } from "./authz";
 
 async function withAssignedRooms(ctx: QueryCtx, request: Doc<"bookingRequests">) {
   const rooms = await Promise.all(request.assignedRoomIds.map((roomId: Id<"rooms">) => ctx.db.get(roomId)));
@@ -26,21 +26,21 @@ export const listPublicEvents = query({
 });
 
 export const listRequests = query({
-  args: { tenantSlug: v.string() },
+  args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const requests = await ctx.db.query("bookingRequests").withIndex("by_tenant_created", (q) => q.eq("tenantId", tenant._id)).order("desc").collect();
     return await Promise.all(requests.map((request) => withAssignedRooms(ctx, request)));
   },
 });
 
 export const getRequest = query({
-  args: { tenantSlug: v.optional(v.string()), requestId: v.id("bookingRequests") },
+  args: { tenantSlug: v.optional(v.string()), auth: v.optional(authContextValidator), requestId: v.id("bookingRequests") },
   handler: async (ctx, args) => {
     const request = await ctx.db.get(args.requestId);
     if (!request) return null;
     if (args.tenantSlug) {
-      const { tenant } = await requireStaff(ctx, args.tenantSlug);
+      const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth ?? {});
       if (request.tenantId !== tenant._id) throw new Error("Request not found");
     }
     const withRooms = await withAssignedRooms(ctx, request);
@@ -50,9 +50,9 @@ export const getRequest = query({
 });
 
 export const dashboardSummary = query({
-  args: { tenantSlug: v.string() },
+  args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const [pending, approved, unseen, blockedTimes] = await Promise.all([
       ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", tenant._id).eq("status", "Pending")).collect(),
       ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", tenant._id).eq("status", "Approved")).collect(),
@@ -102,12 +102,13 @@ export const createRequest = mutation({
 export const updateStatus = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     requestId: v.id("bookingRequests"),
     status: v.union(v.literal("Pending"), v.literal("Approved"), v.literal("Completed"), v.literal("Declined"), v.literal("Cancelled")),
     assignedRoomIds: v.optional(v.array(v.id("rooms"))),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const request = await ctx.db.get(args.requestId);
     if (!request || request.tenantId !== tenant._id) throw new Error("Request not found");
     await ctx.db.patch(args.requestId, {
@@ -121,12 +122,13 @@ export const updateStatus = mutation({
 export const addComment = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     requestId: v.id("bookingRequests"),
     bodyMarkdown: v.string(),
     internal: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const { tenant, user } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const request = await ctx.db.get(args.requestId);
     if (!request || request.tenantId !== tenant._id) throw new Error("Request not found");
     return await ctx.db.insert("comments", {
