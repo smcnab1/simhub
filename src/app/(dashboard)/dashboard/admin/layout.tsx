@@ -1,5 +1,7 @@
 import { NotAllowed } from "@/components/not-allowed";
 import { getDashboardAccess } from "@/lib/dashboard-access";
+import { AdminShell } from "@/components/admin/admin-shell";
+import { AdminNavPills } from "@/components/admin/admin-nav";
 
 export const dynamic = "force-dynamic";
 
@@ -19,5 +21,13 @@ export default async function AdminLayout({
     );
   }
 
-  return children;
+  return (
+    <AdminShell>
+      {/* Mobile-only pill nav */}
+      <div className="lg:hidden">
+        <AdminNavPills />
+      </div>
+      {children}
+    </AdminShell>
+  );
 }
