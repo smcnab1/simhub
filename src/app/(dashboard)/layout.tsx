@@ -14,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <DashboardAuthProvider auth={access.auth}>
       <div className="min-h-screen lg:pl-72">
-        <DashboardNav role={access.auth.role} />
+        <DashboardNav auth={access.auth} />
         <div className="min-w-0">
           <DashboardTopbar />
           <main className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">{children}</main>

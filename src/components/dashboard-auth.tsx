@@ -6,6 +6,11 @@ export type DashboardAuth = {
   tenantSlug: string;
   tenantName?: string;
   role?: "Admin" | "Staff" | "Requester";
+  memberships?: Array<{
+    tenantName: string;
+    tenantSlug: string;
+    role: "Admin" | "Staff" | "Requester";
+  }>;
   workosUserId?: string;
   email?: string;
   workosOrganizationId?: string;

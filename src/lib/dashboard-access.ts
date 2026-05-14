@@ -18,6 +18,11 @@ export type DashboardAccess =
         tenantSlug: string;
         tenantName?: string;
         role: Role;
+        memberships: Array<{
+          tenantName: string;
+          tenantSlug: string;
+          role: Role;
+        }>;
         workosUserId?: string;
         email?: string;
         workosOrganizationId?: string;
@@ -79,6 +84,13 @@ export async function getDashboardAccess({
       tenantSlug: selectedMembership.tenantSlug,
       tenantName: selectedMembership.tenantName,
       role: selectedMembership.role,
+      memberships: memberships
+        .filter((membership) => canAccessStaff(membership.role))
+        .map((membership) => ({
+          tenantName: membership.tenantName,
+          tenantSlug: membership.tenantSlug,
+          role: membership.role,
+        })),
     },
   };
 }
