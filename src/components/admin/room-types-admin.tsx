@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -52,10 +52,11 @@ import {
   LayoutGridIcon,
   PlusIcon,
   PencilIcon,
-  Trash2Icon,
+  ArchiveIcon,
   UsersIcon,
   ClockIcon,
-  StarIcon,
+  SearchIcon,
+  SparklesIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -64,8 +65,8 @@ type RoomTypeWithCounts = {
   name: string;
   description?: string;
   defaultCapacity: number;
-  maxDurationHours?: number;
-  isSpecial: boolean;
+  maxBookingDurationMinutes?: number;
+  specialRoom: boolean;
   active: boolean;
   sortOrder?: number;
   campusId?: Id<"campuses">;
@@ -122,8 +123,8 @@ interface RoomTypeFormDialogProps {
     name: string;
     description?: string;
     defaultCapacity: number;
-    maxDurationHours?: number;
-    isSpecial: boolean;
+    maxBookingDurationMinutes?: number;
+    specialRoom: boolean;
     active: boolean;
     sortOrder?: number;
   }) => Promise<void>;
@@ -143,44 +144,59 @@ function RoomTypeFormDialog({
     String(editing?.defaultCapacity ?? 1)
   );
   const [maxDuration, setMaxDuration] = useState(
-    editing?.maxDurationHours != null ? String(editing.maxDurationHours) : ""
+    editing?.maxBookingDurationMinutes != null
+      ? String(editing.maxBookingDurationMinutes)
+      : ""
   );
-  const [isSpecial, setIsSpecial] = useState(editing?.isSpecial ?? false);
+  const [specialRoom, setSpecialRoom] = useState(editing?.specialRoom ?? false);
   const [active, setActive] = useState(editing?.active ?? true);
   const [sortOrder, setSortOrder] = useState(
     editing?.sortOrder != null ? String(editing.sortOrder) : ""
   );
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setCampusId(editing?.campusId ?? "");
-      setName(editing?.name ?? "");
-      setDescription(editing?.description ?? "");
-      setDefaultCapacity(String(editing?.defaultCapacity ?? 1));
-      setMaxDuration(
-        editing?.maxDurationHours != null ? String(editing.maxDurationHours) : ""
-      );
-      setIsSpecial(editing?.isSpecial ?? false);
-      setActive(editing?.active ?? true);
-      setSortOrder(editing?.sortOrder != null ? String(editing.sortOrder) : "");
-    }
-  }, [open, editing]);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    const parsedCapacity = Number(defaultCapacity);
+    const parsedMaxDuration = maxDuration ? Number(maxDuration) : undefined;
+    const parsedSortOrder = sortOrder ? Number(sortOrder) : undefined;
+
+    if (!name.trim()) {
+      setFormError("Room type name is required.");
+      return;
+    }
+
+    if (!Number.isInteger(parsedCapacity) || parsedCapacity < 0) {
+      setFormError("Default capacity must be a whole number greater than or equal to zero.");
+      return;
+    }
+
+    if (
+      parsedMaxDuration !== undefined &&
+      (!Number.isInteger(parsedMaxDuration) || parsedMaxDuration <= 0)
+    ) {
+      setFormError("Maximum booking duration must be a whole number greater than zero.");
+      return;
+    }
+
+    if (parsedSortOrder !== undefined && !Number.isInteger(parsedSortOrder)) {
+      setFormError("Sort order must be a whole number.");
+      return;
+    }
+
     setSaving(true);
+    setFormError(null);
     try {
       await onSave({
         campusId: campusId ? (campusId as Id<"campuses">) : undefined,
         name: name.trim(),
         description: description.trim() || undefined,
-        defaultCapacity: Number(defaultCapacity) || 1,
-        maxDurationHours: maxDuration ? Number(maxDuration) : undefined,
-        isSpecial,
+        defaultCapacity: parsedCapacity,
+        maxBookingDurationMinutes: parsedMaxDuration,
+        specialRoom,
         active,
-        sortOrder: sortOrder ? Number(sortOrder) : undefined,
+        sortOrder: parsedSortOrder,
       });
       onOpenChange(false);
     } finally {
@@ -252,7 +268,7 @@ function RoomTypeFormDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="rt-duration">Max hours</Label>
+              <Label htmlFor="rt-duration">Max minutes</Label>
               <Input
                 id="rt-duration"
                 type="number"
@@ -283,7 +299,7 @@ function RoomTypeFormDialog({
                   Flags this as a specialist/non-standard room requiring extra admin review.
                 </p>
               </div>
-              <Switch checked={isSpecial} onCheckedChange={setIsSpecial} />
+              <Switch checked={specialRoom} onCheckedChange={setSpecialRoom} />
             </div>
             <div className="flex items-center justify-between rounded-lg border border-border p-3">
               <div className="flex flex-col gap-0.5">
@@ -295,6 +311,12 @@ function RoomTypeFormDialog({
               <Switch checked={active} onCheckedChange={setActive} />
             </div>
           </div>
+
+          {formError ? (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {formError}
+            </p>
+          ) : null}
 
           <DialogFooter className="pt-2">
             <Button
@@ -327,7 +349,7 @@ export function RoomTypesAdmin() {
     auth,
     activeOnly: false,
   });
-  const roomTypes = useQuery(api.tenants.listPrivateRoomTypes, {
+  const roomTypes = useQuery(api.tenants.listAdminRoomTypes, {
     tenantSlug,
     auth,
     activeOnly: false,
@@ -338,6 +360,39 @@ export function RoomTypesAdmin() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<RoomTypeWithCounts | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RoomTypeWithCounts | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("all");
+  const [sortBy, setSortBy] = useState<"sortOrder" | "name" | "activeRooms">("sortOrder");
+
+  const filteredRoomTypes = useMemo(() => {
+    if (!roomTypes) return [];
+
+    const q = search.trim().toLowerCase();
+
+    return [...roomTypes]
+      .filter((rt) => {
+        const matchesSearch =
+          !q ||
+          rt.name.toLowerCase().includes(q) ||
+          rt.description?.toLowerCase().includes(q) ||
+          rt.campus?.name.toLowerCase().includes(q);
+        const matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "active" ? rt.active : !rt.active);
+
+        return matchesSearch && matchesStatus;
+      })
+      .sort((a, b) => {
+        if (sortBy === "name") return a.name.localeCompare(b.name);
+        if (sortBy === "activeRooms") return b.activeRoomCount - a.activeRoomCount;
+
+        const aOrder = a.sortOrder ?? 9999;
+        const bOrder = b.sortOrder ?? 9999;
+
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.name.localeCompare(b.name);
+      });
+  }, [roomTypes, search, statusFilter, sortBy]);
 
   function handleAddNew() {
     setEditingType(null);
@@ -353,9 +408,10 @@ export function RoomTypesAdmin() {
         ...data,
       });
       toast.success(editingType ? "Room type updated." : "Room type added.");
-    } catch {
-      toast.error("Failed to save room type.");
-      throw new Error("save failed");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to save room type.";
+      toast.error(msg);
+      throw err;
     }
   }
 
@@ -367,9 +423,10 @@ export function RoomTypesAdmin() {
         auth,
         roomTypeId: deleteTarget._id,
       });
-      toast.success("Room type removed.");
-    } catch {
-      toast.error("Failed to remove room type.");
+      toast.success("Room type archived.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to archive room type.";
+      toast.error(msg);
     } finally {
       setDeleteTarget(null);
     }
@@ -404,7 +461,48 @@ export function RoomTypesAdmin() {
         ) : roomTypes.length === 0 ? (
           <EmptyRoomTypes onAdd={handleAddNew} />
         ) : (
-          <div className="overflow-x-auto">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+              <div className="relative min-w-52 flex-1">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search room types..."
+                  className="h-8 pl-8 text-sm"
+                  aria-label="Search room types"
+                />
+              </div>
+
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter((v as typeof statusFilter) ?? "all")}>
+                <SelectTrigger className="h-8 w-40 text-sm">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={sortBy} onValueChange={(v) => setSortBy((v as typeof sortBy) ?? "sortOrder")}>
+                <SelectTrigger className="h-8 w-44 text-sm">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sortOrder">Sort order</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="activeRooms">Active rooms</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {filteredRoomTypes.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-sm font-medium text-foreground">No room types match your filters.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Try a different search term or status.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -418,7 +516,7 @@ export function RoomTypesAdmin() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {roomTypes.map((rt) => (
+                {filteredRoomTypes.map((rt) => (
                   <TableRow key={rt._id}>
                     <TableCell className="pl-6">
                       <div className="flex flex-col gap-0.5">
@@ -427,8 +525,9 @@ export function RoomTypesAdmin() {
                           <span className="font-medium text-foreground">
                             {rt.name}
                           </span>
-                          {rt.isSpecial && (
+                          {rt.specialRoom && (
                             <Badge variant="outline" className="text-[10px] py-0 bg-primary/10 text-primary border-border">
+                              <SparklesIcon className="size-2.5" />
                               Special
                             </Badge>
                           )}
@@ -462,10 +561,10 @@ export function RoomTypesAdmin() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {rt.maxDurationHours ? (
+                      {rt.maxBookingDurationMinutes ? (
                         <div className="flex items-center gap-1">
                           <ClockIcon className="size-3 text-muted-foreground/50" />
-                          {rt.maxDurationHours}h
+                          {rt.maxBookingDurationMinutes} min
                         </div>
                       ) : (
                         <span className="text-border/70 italic">No limit</span>
@@ -495,9 +594,9 @@ export function RoomTypesAdmin() {
                           onClick={() =>
                             setDeleteTarget(rt as unknown as RoomTypeWithCounts)
                           }
-                          aria-label={`Delete ${rt.name}`}
+                          aria-label={`Archive ${rt.name}`}
                         >
-                          <Trash2Icon className="size-3.5" />
+                          <ArchiveIcon className="size-3.5" />
                         </Button>
                       </div>
                     </TableCell>
@@ -505,17 +604,21 @@ export function RoomTypesAdmin() {
                 ))}
               </TableBody>
             </Table>
+              </div>
+            )}
           </div>
         )}
       </AdminSettingsCard>
 
-      <RoomTypeFormDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        editing={editingType}
-        campuses={(campuses ?? []) as { _id: Id<"campuses">; name: string }[]}
-        onSave={handleSave}
-      />
+      {dialogOpen ? (
+        <RoomTypeFormDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          editing={editingType}
+          campuses={(campuses ?? []) as { _id: Id<"campuses">; name: string }[]}
+          onSave={handleSave}
+        />
+      ) : null}
 
       <AlertDialog
         open={!!deleteTarget}
@@ -523,9 +626,9 @@ export function RoomTypesAdmin() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete room type?</AlertDialogTitle>
+            <AlertDialogTitle>Archive room type?</AlertDialogTitle>
             <AlertDialogDescription>
-              {`Delete "${deleteTarget?.name}"? If rooms are linked to this type it will be deactivated instead of permanently removed.`}
+              {`Archive "${deleteTarget?.name}"? It will be hidden from new room and booking choices, while existing rooms and historic bookings continue to function.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -534,7 +637,7 @@ export function RoomTypesAdmin() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              Archive
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

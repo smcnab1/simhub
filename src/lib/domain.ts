@@ -5,10 +5,10 @@ export type RoomType = {
   id: string;
   name: string;
   campus: string;
-  maxDurationHours: number;
+  maxBookingDurationMinutes?: number;
   capacity: number;
   quantity: number;
-  isSpecial: boolean;
+  specialRoom: boolean;
 };
 
 export type BookingBlock = {

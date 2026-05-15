@@ -1,8 +1,15 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authContextValidator, membershipsForAuth, requireAdmin, requireStaff, tenantBySlug } from "./authz";
+import {
+  campusIsActive,
+  normalizeCampusName,
+  normalizeCampusText,
+  sortCampuses,
+  validateCampusSortOrder,
+} from "../src/lib/campus";
 
 async function getRoomCountForRoomType(
   ctx: QueryCtx,
@@ -27,6 +34,47 @@ async function listTenantRooms(ctx: QueryCtx, tenantId: Id<"tenants">) {
     .query("rooms")
     .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
     .collect();
+}
+
+async function roomImageUrl(ctx: QueryCtx, imageStorageId?: Id<"_storage">) {
+  return imageStorageId ? await ctx.storage.getUrl(imageStorageId) : null;
+}
+
+function normalizeRoomType(roomType: Doc<"roomTypes">) {
+  const maxBookingDurationMinutes =
+    roomType.maxBookingDurationMinutes ??
+    (roomType.maxDurationHours !== undefined
+      ? roomType.maxDurationHours * 60
+      : undefined);
+
+  return {
+    ...roomType,
+    maxBookingDurationMinutes,
+    specialRoom: roomType.specialRoom ?? roomType.isSpecial ?? false,
+  };
+}
+
+async function campusIsPubliclySelectable(
+  ctx: QueryCtx,
+  campusId?: Id<"campuses">
+) {
+  if (!campusId) {
+    return true;
+  }
+
+  const campus = await ctx.db.get(campusId);
+  return !!campus && campusIsActive(campus);
+}
+
+async function roomTypeIsPubliclySelectable(
+  ctx: QueryCtx,
+  roomType: Doc<"roomTypes">
+) {
+  if (!roomType.active) {
+    return false;
+  }
+
+  return await campusIsPubliclySelectable(ctx, roomType.campusId);
 }
 
 export const getBySlug = query({
@@ -82,15 +130,7 @@ export const listCampuses = query({
       .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
       .collect();
 
-    return campuses
-      .filter((campus) => campus.active ?? true)
-      .sort((a, b) => {
-        const aOrder = a.sortOrder ?? 9999;
-        const bOrder = b.sortOrder ?? 9999;
-
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        return a.name.localeCompare(b.name);
-      });
+    return sortCampuses(campuses.filter(campusIsActive));
   },
 });
 
@@ -108,17 +148,31 @@ export const listPrivateCampuses = query({
       .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
       .collect();
 
-    return campuses
-      .filter((campus) =>
-        args.activeOnly === false ? true : campus.active ?? true
-      )
-      .sort((a, b) => {
-        const aOrder = a.sortOrder ?? 9999;
-        const bOrder = b.sortOrder ?? 9999;
+    const filtered =
+      args.activeOnly === false ? campuses : campuses.filter(campusIsActive);
 
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        return a.name.localeCompare(b.name);
-      });
+    return sortCampuses(filtered);
+  },
+});
+
+export const listAdminCampuses = query({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    activeOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
+
+    const campuses = await ctx.db
+      .query("campuses")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+
+    const filtered =
+      args.activeOnly === false ? campuses : campuses.filter(campusIsActive);
+
+    return sortCampuses(filtered);
   },
 });
 
@@ -128,23 +182,61 @@ export const upsertCampus = mutation({
     auth: authContextValidator,
     campusId: v.optional(v.id("campuses")),
     name: v.string(),
+    addressLine1: v.optional(v.string()),
+    addressLine2: v.optional(v.string()),
+    city: v.optional(v.string()),
+    region: v.optional(v.string()),
+    postalCode: v.optional(v.string()),
+    country: v.optional(v.string()),
+    details: v.optional(v.string()),
     active: v.optional(v.boolean()),
     sortOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
+    const now = Date.now();
 
-    const name = args.name.trim();
+    const name = normalizeCampusName(args.name);
 
     if (!name) {
-      throw new Error("Campus name is required");
+      throw new Error("Campus name is required.");
+    }
+
+    const sortOrderError = validateCampusSortOrder(args.sortOrder);
+
+    if (sortOrderError) {
+      throw new Error(sortOrderError);
+    }
+
+    const existingCampuses = await ctx.db
+      .query("campuses")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+
+    const duplicate = existingCampuses.find(
+      (campus) =>
+        campus._id !== args.campusId &&
+        campus.name.trim().toLowerCase() === name.toLowerCase()
+    );
+
+    if (duplicate) {
+      throw new Error("A campus with this name already exists.");
     }
 
     const payload = {
       tenantId: tenant._id,
       name,
+      addressLine1: normalizeCampusText(args.addressLine1),
+      addressLine2: normalizeCampusText(args.addressLine2),
+      city: normalizeCampusText(args.city),
+      region: normalizeCampusText(args.region),
+      postalCode: normalizeCampusText(args.postalCode),
+      country: normalizeCampusText(args.country),
+      details: normalizeCampusText(args.details),
       active: args.active ?? true,
       sortOrder: args.sortOrder,
+      updatedAt: now,
+      archivedAt: args.active === false ? now : undefined,
     };
 
     if (args.campusId) {
@@ -158,7 +250,52 @@ export const upsertCampus = mutation({
       return args.campusId;
     }
 
-    return await ctx.db.insert("campuses", payload);
+    return await ctx.db.insert("campuses", {
+      ...payload,
+      createdAt: now,
+    });
+  },
+});
+
+export const reorderCampuses = mutation({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    campusIds: v.array(v.id("campuses")),
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
+    const uniqueCampusIds = new Set(args.campusIds);
+
+    if (uniqueCampusIds.size !== args.campusIds.length) {
+      throw new Error("Campus order contains a duplicate campus.");
+    }
+
+    const campuses = await ctx.db
+      .query("campuses")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+
+    const tenantCampusIds = new Set(campuses.map((campus) => campus._id));
+
+    for (const campusId of args.campusIds) {
+      if (!tenantCampusIds.has(campusId)) {
+        throw new Error("Campus not found.");
+      }
+    }
+
+    const now = Date.now();
+
+    await Promise.all(
+      args.campusIds.map((campusId, index) =>
+        ctx.db.patch(campusId, {
+          sortOrder: (index + 1) * 10,
+          updatedAt: now,
+        })
+      )
+    );
+
+    return args.campusIds.length;
   },
 });
 
@@ -176,31 +313,57 @@ export const deleteCampus = mutation({
       throw new Error("Campus not found");
     }
 
-    const [roomTypes, rooms] = await Promise.all([
-      ctx.db
-        .query("roomTypes")
-        .withIndex("by_tenant_campus", (q) =>
-          q.eq("tenantId", tenant._id).eq("campusId", args.campusId)
-        )
-        .collect(),
-      ctx.db
-        .query("rooms")
-        .withIndex("by_tenant_campus", (q) =>
-          q.eq("tenantId", tenant._id).eq("campusId", args.campusId)
-        )
-        .collect(),
-    ]);
+    await ctx.db.patch(args.campusId, {
+      active: false,
+      archivedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
 
-    if (roomTypes.length > 0 || rooms.length > 0) {
-      await ctx.db.patch(args.campusId, {
-        active: false,
-      });
+    return args.campusId;
+  },
+});
 
-      return args.campusId;
+export const backfillCampusManagementFields = mutation({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
+    const campuses = sortCampuses(
+      await ctx.db
+        .query("campuses")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+        .collect()
+    );
+
+    let updated = 0;
+    const now = Date.now();
+
+    for (const [index, campus] of campuses.entries()) {
+      const patch: {
+        active?: boolean;
+        sortOrder?: number;
+        updatedAt: number;
+      } = {
+        updatedAt: now,
+      };
+
+      if (campus.active === undefined) {
+        patch.active = true;
+      }
+
+      if (campus.sortOrder === undefined) {
+        patch.sortOrder = (index + 1) * 10;
+      }
+
+      if (Object.keys(patch).length > 1) {
+        await ctx.db.patch(campus._id, patch);
+        updated += 1;
+      }
     }
 
-    await ctx.db.delete(args.campusId);
-    return args.campusId;
+    return { updated };
   },
 });
 
@@ -232,10 +395,16 @@ export const listRoomTypes = query({
           .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
           .collect();
 
+    const selectableRoomTypes = (
+      await Promise.all(
+        roomTypes.map(async (roomType) =>
+          (await roomTypeIsPubliclySelectable(ctx, roomType)) ? roomType : null
+        )
+      )
+    ).filter((roomType): roomType is Doc<"roomTypes"> => roomType !== null);
+
     const enriched = await Promise.all(
-      roomTypes
-        .filter((roomType) => roomType.active)
-        .map(async (roomType) => {
+      selectableRoomTypes.map(async (roomType) => {
           const counts = await getRoomCountForRoomType(
             ctx,
             tenant._id,
@@ -247,7 +416,7 @@ export const listRoomTypes = query({
             : null;
 
           return {
-            ...roomType,
+            ...normalizeRoomType(roomType),
             ...counts,
             campus,
           };
@@ -303,7 +472,63 @@ export const listPrivateRoomTypes = query({
           : null;
 
         return {
-          ...roomType,
+          ...normalizeRoomType(roomType),
+          ...counts,
+          campus,
+        };
+      })
+    );
+
+    return enriched.sort((a, b) => {
+      const aOrder = a.sortOrder ?? 9999;
+      const bOrder = b.sortOrder ?? 9999;
+
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.name.localeCompare(b.name);
+    });
+  },
+});
+
+export const listAdminRoomTypes = query({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    campusId: v.optional(v.id("campuses")),
+    activeOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
+
+    const roomTypes = args.campusId
+      ? await ctx.db
+          .query("roomTypes")
+          .withIndex("by_tenant_campus", (q) =>
+            q.eq("tenantId", tenant._id).eq("campusId", args.campusId)
+          )
+          .collect()
+      : await ctx.db
+          .query("roomTypes")
+          .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+          .collect();
+
+    const filtered = args.activeOnly === false
+      ? roomTypes
+      : roomTypes.filter((roomType) => roomType.active);
+
+    const enriched = await Promise.all(
+      filtered.map(async (roomType) => {
+        const counts = await getRoomCountForRoomType(
+          ctx,
+          tenant._id,
+          roomType._id
+        );
+
+        const campus = roomType.campusId
+          ? await ctx.db.get(roomType.campusId)
+          : null;
+
+        return {
+          ...normalizeRoomType(roomType),
           ...counts,
           campus,
         };
@@ -329,8 +554,8 @@ export const upsertRoomType = mutation({
     name: v.string(),
     description: v.optional(v.string()),
     defaultCapacity: v.number(),
-    maxDurationHours: v.optional(v.number()),
-    isSpecial: v.boolean(),
+    maxBookingDurationMinutes: v.optional(v.number()),
+    specialRoom: v.boolean(),
     active: v.boolean(),
     sortOrder: v.optional(v.number()),
   },
@@ -352,12 +577,36 @@ export const upsertRoomType = mutation({
       throw new Error("Room type name is required");
     }
 
-    if (args.defaultCapacity < 0) {
-      throw new Error("Default capacity cannot be negative");
+    if (!Number.isInteger(args.defaultCapacity) || args.defaultCapacity < 0) {
+      throw new Error("Default capacity must be a whole number greater than or equal to zero");
     }
 
-    if (args.maxDurationHours !== undefined && args.maxDurationHours <= 0) {
-      throw new Error("Maximum duration must be greater than zero");
+    if (
+      args.maxBookingDurationMinutes !== undefined &&
+      (!Number.isInteger(args.maxBookingDurationMinutes) ||
+        args.maxBookingDurationMinutes <= 0)
+    ) {
+      throw new Error("Maximum booking duration must be a whole number greater than zero");
+    }
+
+    if (args.sortOrder !== undefined && !Number.isInteger(args.sortOrder)) {
+      throw new Error("Sort order must be a whole number");
+    }
+
+    const existingRoomTypes = await ctx.db
+      .query("roomTypes")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+
+    const duplicate = existingRoomTypes.find(
+      (roomType) =>
+        roomType._id !== args.roomTypeId &&
+        roomType.name.trim().toLowerCase() === name.toLowerCase() &&
+        roomType.campusId === args.campusId
+    );
+
+    if (duplicate) {
+      throw new Error("A room type with this name already exists for this campus scope");
     }
 
     const payload = {
@@ -366,8 +615,10 @@ export const upsertRoomType = mutation({
       name,
       description: args.description?.trim() || undefined,
       defaultCapacity: args.defaultCapacity,
-      maxDurationHours: args.maxDurationHours,
-      isSpecial: args.isSpecial,
+      maxBookingDurationMinutes: args.maxBookingDurationMinutes,
+      specialRoom: args.specialRoom,
+      maxDurationHours: undefined,
+      isSpecial: undefined,
       active: args.active,
       sortOrder: args.sortOrder,
       updatedAt: now,
@@ -405,24 +656,66 @@ export const deleteRoomType = mutation({
       throw new Error("Room type not found");
     }
 
-    const linkedRooms = await ctx.db
-      .query("rooms")
-      .withIndex("by_tenant_type", (q) =>
-        q.eq("tenantId", tenant._id).eq("roomTypeId", args.roomTypeId)
-      )
+    await ctx.db.patch(args.roomTypeId, {
+      active: false,
+      updatedAt: Date.now(),
+    });
+
+    return args.roomTypeId;
+  },
+});
+
+export const backfillRoomTypeManagementFields = mutation({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
+    const roomTypes = await ctx.db
+      .query("roomTypes")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
       .collect();
 
-    if (linkedRooms.length > 0) {
-      await ctx.db.patch(args.roomTypeId, {
-        active: false,
-        updatedAt: Date.now(),
-      });
+    let updated = 0;
 
-      return args.roomTypeId;
+    for (const roomType of roomTypes) {
+      const patch: {
+        maxBookingDurationMinutes?: number;
+        specialRoom?: boolean;
+        maxDurationHours?: undefined;
+        isSpecial?: undefined;
+        updatedAt: number;
+      } = {
+        updatedAt: Date.now(),
+      };
+
+      if (
+        roomType.maxBookingDurationMinutes === undefined &&
+        roomType.maxDurationHours !== undefined
+      ) {
+        patch.maxBookingDurationMinutes = roomType.maxDurationHours * 60;
+      }
+
+      if (roomType.specialRoom === undefined) {
+        patch.specialRoom = roomType.isSpecial ?? false;
+      }
+
+      if (roomType.maxDurationHours !== undefined) {
+        patch.maxDurationHours = undefined;
+      }
+
+      if (roomType.isSpecial !== undefined) {
+        patch.isSpecial = undefined;
+      }
+
+      if (Object.keys(patch).length > 1) {
+        await ctx.db.patch(roomType._id, patch);
+        updated += 1;
+      }
     }
 
-    await ctx.db.delete(args.roomTypeId);
-    return args.roomTypeId;
+    return { updated };
   },
 });
 
@@ -465,8 +758,17 @@ export const listRooms = query({
       rooms = await listTenantRooms(ctx, tenant._id);
     }
 
-    const filtered =
-      args.activeOnly === false ? rooms : rooms.filter((room) => room.active);
+    const filtered = args.activeOnly === false
+      ? rooms
+      : (
+          await Promise.all(
+            rooms.map(async (room) =>
+              room.active && (await campusIsPubliclySelectable(ctx, room.campusId))
+                ? room
+                : null
+            )
+          )
+        ).filter((room): room is Doc<"rooms"> => room !== null);
 
     const enriched = await Promise.all(
       filtered.map(async (room) => {
@@ -477,8 +779,9 @@ export const listRooms = query({
 
         return {
           ...room,
-          roomType,
+          roomType: roomType ? normalizeRoomType(roomType) : null,
           campus,
+          imageUrl: await roomImageUrl(ctx, room.imageStorageId),
         };
       })
     );
@@ -520,9 +823,8 @@ export const listPrivateRooms = query({
       rooms = await listTenantRooms(ctx, tenant._id);
     }
 
-    const filtered = args.activeOnly
-      ? rooms.filter((room) => room.active)
-      : rooms;
+    const filtered =
+      args.activeOnly === false ? rooms : rooms.filter((room) => room.active);
 
     const enriched = await Promise.all(
       filtered.map(async (room) => {
@@ -533,8 +835,9 @@ export const listPrivateRooms = query({
 
         return {
           ...room,
-          roomType,
+          roomType: roomType ? normalizeRoomType(roomType) : null,
           campus,
+          imageUrl: await roomImageUrl(ctx, room.imageStorageId),
         };
       })
     );
@@ -555,6 +858,7 @@ export const upsertRoom = mutation({
     description: v.optional(v.string()),
     capacity: v.number(),
     imageStorageId: v.optional(v.id("_storage")),
+    removeImage: v.optional(v.boolean()),
     active: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -565,6 +869,16 @@ export const upsertRoom = mutation({
 
     if (!roomType || roomType.tenantId !== tenant._id) {
       throw new Error("Room type not found");
+    }
+
+    const existingRoom = args.roomId ? await ctx.db.get(args.roomId) : null;
+
+    if (args.roomId && (!existingRoom || existingRoom.tenantId !== tenant._id)) {
+      throw new Error("Room not found");
+    }
+
+    if (!roomType.active && existingRoom?.roomTypeId !== args.roomTypeId) {
+      throw new Error("Inactive room types cannot be assigned to new rooms");
     }
 
     if (args.campusId) {
@@ -586,7 +900,7 @@ export const upsertRoom = mutation({
       throw new Error("Room name is required");
     }
 
-    if (args.capacity < 0) {
+    if (!Number.isFinite(args.capacity) || args.capacity < 0) {
       throw new Error("Room capacity cannot be negative");
     }
 
@@ -601,7 +915,18 @@ export const upsertRoom = mutation({
       throw new Error("A room with this code already exists");
     }
 
-    const payload = {
+    const payload: {
+      tenantId: Id<"tenants">;
+      campusId: Id<"campuses"> | undefined;
+      roomTypeId: Id<"roomTypes">;
+      code: string;
+      name: string;
+      description?: string;
+      capacity: number;
+      active: boolean;
+      updatedAt: number;
+      imageStorageId?: Id<"_storage"> | undefined;
+    } = {
       tenantId: tenant._id,
       campusId: args.campusId ?? roomType.campusId,
       roomTypeId: args.roomTypeId,
@@ -609,20 +934,25 @@ export const upsertRoom = mutation({
       name,
       description: args.description?.trim() || undefined,
       capacity: args.capacity,
-      imageStorageId: args.imageStorageId,
       active: args.active,
       updatedAt: now,
     };
 
     if (args.roomId) {
-      const room = await ctx.db.get(args.roomId);
-
-      if (!room || room.tenantId !== tenant._id) {
-        throw new Error("Room not found");
+      if (args.removeImage) {
+        payload.imageStorageId = undefined;
+      } else if (args.imageStorageId) {
+        payload.imageStorageId = args.imageStorageId;
+      } else if (existingRoom?.imageStorageId) {
+        payload.imageStorageId = existingRoom.imageStorageId;
       }
 
       await ctx.db.patch(args.roomId, payload);
       return args.roomId;
+    }
+
+    if (args.imageStorageId) {
+      payload.imageStorageId = args.imageStorageId;
     }
 
     return await ctx.db.insert("rooms", {
@@ -646,27 +976,11 @@ export const deleteRoom = mutation({
       throw new Error("Room not found");
     }
 
-    const bookings = await ctx.db
-      .query("bookingRequests")
-      .withIndex("by_tenant_created", (q) => q.eq("tenantId", tenant._id))
-      .collect();
+    await ctx.db.patch(args.roomId, {
+      active: false,
+      updatedAt: Date.now(),
+    });
 
-    const isUsedInBooking = bookings.some(
-      (booking) =>
-        booking.assignedRoomIds.includes(args.roomId) ||
-        booking.requestedRoomIds?.includes(args.roomId)
-    );
-
-    if (isUsedInBooking) {
-      await ctx.db.patch(args.roomId, {
-        active: false,
-        updatedAt: Date.now(),
-      });
-
-      return args.roomId;
-    }
-
-    await ctx.db.delete(args.roomId);
     return args.roomId;
   },
 });
