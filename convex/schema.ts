@@ -63,6 +63,8 @@ export default defineSchema({
 
     // Optional rule for bookings of this room type.
     maxBookingDurationMinutes: v.optional(v.number()),
+    standardSetupMinutes: v.optional(v.number()),
+    standardCleanupMinutes: v.optional(v.number()),
     // Legacy field kept optional while existing data is backfilled.
     maxDurationHours: v.optional(v.number()),
 
@@ -186,6 +188,59 @@ export default defineSchema({
     allocationUpdatedByUserId: v.optional(v.id("users")),
     allocationUpdatedAt: v.optional(v.number()),
 
+    conflictMetadata: v.optional(
+      v.object({
+        available: v.boolean(),
+        canSubmit: v.boolean(),
+        highestSeverity: v.optional(
+          v.union(
+            v.literal("informational"),
+            v.literal("warning"),
+            v.literal("likely_unavailable")
+          )
+        ),
+        summary: v.string(),
+        conflicts: v.array(
+          v.object({
+            type: v.union(
+              v.literal("invalid_time"),
+              v.literal("duration_rule"),
+              v.literal("exact_room_overlap"),
+              v.literal("pending_overlap"),
+              v.literal("room_type_exhausted"),
+              v.literal("blocked_period"),
+              v.literal("campus_unavailable")
+            ),
+            severity: v.union(
+              v.literal("informational"),
+              v.literal("warning"),
+              v.literal("likely_unavailable")
+            ),
+            message: v.string(),
+            roomId: v.optional(v.string()),
+            roomCode: v.optional(v.string()),
+            roomName: v.optional(v.string()),
+            roomTypeId: v.optional(v.string()),
+            roomTypeName: v.optional(v.string()),
+            campusId: v.optional(v.string()),
+            campusName: v.optional(v.string()),
+            conflictingRequestId: v.optional(v.string()),
+            conflictingStatus: v.optional(
+              v.union(
+                v.literal("Pending"),
+                v.literal("Approved"),
+                v.literal("Completed")
+              )
+            ),
+            blockedTimeId: v.optional(v.string()),
+            blockedReason: v.optional(v.string()),
+            overlapStart: v.optional(v.string()),
+            overlapEnd: v.optional(v.string()),
+          })
+        ),
+      })
+    ),
+
     customInputs: v.array(
       v.object({
         fieldId: v.string(),
@@ -201,6 +256,8 @@ export default defineSchema({
   })
     .index("by_tenant_status", ["tenantId", "status"])
     .index("by_tenant_created", ["tenantId", "createdAt"])
+    .index("by_tenant_requester_user", ["tenantId", "requesterUserId"])
+    .index("by_tenant_requester_email", ["tenantId", "requesterEmail"])
     .index("by_tenant_allocation_status", ["tenantId", "allocationStatus"]),
 
   comments: defineTable({

@@ -2,11 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   allocateRoomsByType,
   bookingDurationMinutes,
+  bookingBlocksFromSessionWindow,
+  checkAvailabilityConflicts,
   formatBookingDuration,
   hasBookingConflict,
+  occupiedBookingWindow,
   rangesOverlap,
+  roomTypeBufferMinutes,
+  validateBookingBlocks,
+  validateBookingWithinStaffHours,
   validateMaxBookingDuration,
+  validateSessionWithinOpeningHours,
+  validateRoomSelectionState,
   type AssignedBooking,
+  type BookingBlock,
   type BookingRange,
   type RoomAllocationRoom,
 } from "@/lib/booking-logic";
@@ -111,6 +120,138 @@ describe("booking duration rules", () => {
   });
 });
 
+describe("booking block validation", () => {
+  it("validates setup, session, and cleanup chronology", () => {
+    expect(
+      validateBookingBlocks([
+        { label: "Setup", start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T09:30:00+01:00" },
+        { label: "Session", start: "2026-05-18T09:30:00+01:00", end: "2026-05-18T10:30:00+01:00" },
+        { label: "Cleanup", start: "2026-05-18T10:30:00+01:00", end: "2026-05-18T11:00:00+01:00" },
+      ])
+    ).toBeNull();
+  });
+
+  it("builds setup and cleanup blocks from room type buffers", () => {
+    expect(
+      bookingBlocksFromSessionWindow(
+        "2026-05-18T09:30:00+01:00",
+        "2026-05-18T10:30:00+01:00",
+        { setupMinutes: 45, cleanupMinutes: 20 }
+      )
+    ).toEqual([
+      {
+        label: "Setup",
+        start: "2026-05-18T07:45:00.000Z",
+        end: "2026-05-18T09:30:00+01:00",
+      },
+      {
+        label: "Session",
+        start: "2026-05-18T09:30:00+01:00",
+        end: "2026-05-18T10:30:00+01:00",
+      },
+      {
+        label: "Cleanup",
+        start: "2026-05-18T10:30:00+01:00",
+        end: "2026-05-18T09:50:00.000Z",
+      },
+    ]);
+  });
+
+  it("uses the largest setup and cleanup buffer across selected room types", () => {
+    expect(
+      roomTypeBufferMinutes(
+        [
+          { roomTypeId: "classroom", quantity: 1 },
+          { roomTypeId: "immersive", quantity: 1 },
+        ],
+        [
+          { id: "classroom", name: "Classroom", standardSetupMinutes: 30, standardCleanupMinutes: 15 },
+          { id: "immersive", name: "Immersive", standardSetupMinutes: 60, standardCleanupMinutes: 45 },
+        ]
+      )
+    ).toEqual({ setupMinutes: 60, cleanupMinutes: 45 });
+  });
+
+  it("validates session times against opening hours", () => {
+    expect(
+      validateSessionWithinOpeningHours(
+        { start: "2026-05-18T09:30:00+01:00", end: "2026-05-18T10:30:00+01:00" },
+        "Monday: 09:00 - 17:00",
+        "Europe/London"
+      )
+    ).toBeNull();
+
+    expect(
+      validateSessionWithinOpeningHours(
+        { start: "2026-05-18T08:30:00+01:00", end: "2026-05-18T10:30:00+01:00" },
+        "Monday: 09:00 - 17:00",
+        "Europe/London"
+      )
+    ).toBe("Session time must be within Monday opening hours.");
+  });
+
+  it("allows setup and cleanup inside staff hours around public hours", () => {
+    const hours = "Monday: Public 09:00 - 17:00; Staff 08:30 - 17:30";
+
+    expect(
+      validateSessionWithinOpeningHours(
+        { start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T17:00:00+01:00" },
+        hours,
+        "Europe/London"
+      )
+    ).toBeNull();
+
+    expect(
+      validateBookingWithinStaffHours(
+        { start: "2026-05-18T08:30:00+01:00", end: "2026-05-18T17:30:00+01:00" },
+        hours,
+        "Europe/London"
+      )
+    ).toBeNull();
+  });
+
+  it("excludes setup and cleanup from max duration rules", () => {
+    const blocks: BookingBlock[] = [
+      { label: "Setup", start: "2026-05-18T08:30:00+01:00", end: "2026-05-18T09:00:00+01:00" },
+      { label: "Session", start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T17:00:00+01:00" },
+      { label: "Cleanup", start: "2026-05-18T17:00:00+01:00", end: "2026-05-18T17:30:00+01:00" },
+    ];
+
+    expect(
+      validateMaxBookingDuration(
+        blocks,
+        [{ roomTypeId: "classroom", quantity: 1 }],
+        [{ id: "classroom", name: "Classroom", maxBookingDurationMinutes: 480 }]
+      )
+    ).toBeNull();
+  });
+
+  it("rejects cleanup before the session ends", () => {
+    expect(
+      validateBookingBlocks([
+        { label: "Setup", start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T09:30:00+01:00" },
+        { label: "Session", start: "2026-05-18T09:30:00+01:00", end: "2026-05-18T10:30:00+01:00" },
+        { label: "Cleanup", start: "2026-05-18T10:00:00+01:00", end: "2026-05-18T11:00:00+01:00" },
+      ])
+    ).toBe("Cleanup cannot start before the session ends.");
+  });
+
+  it("calculates the occupied window from setup start through cleanup end", () => {
+    expect(
+      occupiedBookingWindow([
+        { start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T09:15:00+01:00" },
+        { start: "2026-05-18T10:00:00+01:00", end: "2026-05-18T11:00:00+01:00" },
+        { start: "2026-05-18T11:30:00+01:00", end: "2026-05-18T12:00:00+01:00" },
+      ])
+    ).toEqual([
+      {
+        start: "2026-05-18T08:00:00.000Z",
+        end: "2026-05-18T11:00:00.000Z",
+      },
+    ]);
+  });
+});
+
 describe("room allocation logic", () => {
   const rooms: RoomAllocationRoom[] = [
     { id: "classroom-1", roomTypeId: "classroom", active: true },
@@ -177,6 +318,193 @@ describe("room allocation logic", () => {
       success: false,
       assignedRoomIds: [],
     });
+  });
+});
+
+describe("availability conflict engine", () => {
+  const rooms = [
+    {
+      id: "immersive-1",
+      code: "PH901",
+      name: "Immersive Suite 1",
+      roomTypeId: "immersive",
+      campusId: "campus-1",
+      active: true,
+    },
+    {
+      id: "immersive-2",
+      code: "PH902",
+      name: "Immersive Suite 2",
+      roomTypeId: "immersive",
+      campusId: "campus-1",
+      active: true,
+    },
+  ];
+  const roomTypes = [
+    {
+      id: "immersive",
+      name: "Immersive Room",
+      campusId: "campus-1",
+      active: true,
+    },
+  ];
+  const campuses = [{ id: "campus-1", name: "Paragon House", active: true }];
+
+  it("reports exact room overlaps as likely unavailable", () => {
+    const result = checkAvailabilityConflicts({
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      requestedRoomIds: ["immersive-1"],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [
+        {
+          id: "booking-1",
+          status: "Approved",
+          assignedRoomIds: ["immersive-1"],
+          blocks: [{ start: "2026-05-18T09:30:00+01:00", end: "2026-05-18T10:30:00+01:00" }],
+        },
+      ],
+    });
+
+    expect(result.available).toBe(false);
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "exact_room_overlap",
+        severity: "likely_unavailable",
+        roomCode: "PH901",
+      })
+    );
+  });
+
+  it("reports room type exhaustion against approved bookings", () => {
+    const result = checkAvailabilityConflicts({
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [
+        {
+          id: "booking-1",
+          status: "Approved",
+          assignedRoomIds: ["immersive-1"],
+          blocks: [sessionBlock],
+        },
+        {
+          id: "booking-2",
+          status: "Approved",
+          assignedRoomIds: ["immersive-2"],
+          blocks: [sessionBlock],
+        },
+      ],
+    });
+
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "room_type_exhausted",
+        severity: "likely_unavailable",
+        roomTypeName: "Immersive Room",
+      })
+    );
+  });
+
+  it("treats pending room type exhaustion as a warning", () => {
+    const result = checkAvailabilityConflicts({
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 2 }],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [
+        {
+          id: "pending-1",
+          status: "Pending",
+          assignedRoomIds: [],
+          roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+          blocks: [sessionBlock],
+        },
+      ],
+    });
+
+    expect(result.available).toBe(true);
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "room_type_exhausted",
+        severity: "warning",
+      })
+    );
+  });
+
+  it("reports blocked campus periods", () => {
+    const result = checkAvailabilityConflicts({
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [],
+      blockedTimes: [
+        {
+          id: "block-1",
+          campusId: "campus-1",
+          start: "2026-05-18T08:30:00+01:00",
+          end: "2026-05-18T11:00:00+01:00",
+          reason: "Maintenance",
+        },
+      ],
+    });
+
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "campus_unavailable",
+        severity: "likely_unavailable",
+        campusName: "Paragon House",
+        blockedReason: "Maintenance",
+      })
+    );
+  });
+});
+
+describe("room selection state validation", () => {
+  it("allows specific rooms without room type quantities", () => {
+    expect(
+      validateRoomSelectionState({
+        roomSelectionMode: "SpecificRooms",
+        requestedRoomIds: ["room-1", "room-2"],
+        roomTypeRequests: [],
+      })
+    ).toBeNull();
+  });
+
+  it("rejects mixed specific room and room type quantity selections", () => {
+    expect(
+      validateRoomSelectionState({
+        roomSelectionMode: "SpecificRooms",
+        requestedRoomIds: ["room-1"],
+        roomTypeRequests: [{ roomTypeId: "classroom", quantity: 1 }],
+      })
+    ).toBe("Specific room requests cannot also include room type quantities.");
+  });
+
+  it("allows room type quantity selections without specific rooms", () => {
+    expect(
+      validateRoomSelectionState({
+        roomSelectionMode: "RoomTypeQuantity",
+        requestedRoomIds: [],
+        roomTypeRequests: [{ roomTypeId: "classroom", quantity: 2 }],
+      })
+    ).toBeNull();
+  });
+
+  it("rejects duplicate specific rooms", () => {
+    expect(
+      validateRoomSelectionState({
+        roomSelectionMode: "SpecificRooms",
+        requestedRoomIds: ["room-1", "room-1"],
+      })
+    ).toBe("The same room cannot be requested more than once.");
   });
 });
 

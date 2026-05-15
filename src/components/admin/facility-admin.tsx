@@ -49,21 +49,23 @@ const DAYS = [
 type DayName = (typeof DAYS)[number];
 
 interface DayHours {
-  open: string;
-  close: string;
+  publicOpen: string;
+  publicClose: string;
+  staffOpen: string;
+  staffClose: string;
   closed: boolean;
 }
 
 type WeekHours = Record<DayName, DayHours>;
 
 const DEFAULT_HOURS: WeekHours = {
-  Monday: { open: "09:00", close: "17:00", closed: false },
-  Tuesday: { open: "09:00", close: "17:00", closed: false },
-  Wednesday: { open: "09:00", close: "17:00", closed: false },
-  Thursday: { open: "09:00", close: "17:00", closed: false },
-  Friday: { open: "09:00", close: "17:00", closed: false },
-  Saturday: { open: "09:00", close: "17:00", closed: true },
-  Sunday: { open: "09:00", close: "17:00", closed: true },
+  Monday: { publicOpen: "09:00", publicClose: "17:00", staffOpen: "08:30", staffClose: "17:30", closed: false },
+  Tuesday: { publicOpen: "09:00", publicClose: "17:00", staffOpen: "08:30", staffClose: "17:30", closed: false },
+  Wednesday: { publicOpen: "09:00", publicClose: "17:00", staffOpen: "08:30", staffClose: "17:30", closed: false },
+  Thursday: { publicOpen: "09:00", publicClose: "17:00", staffOpen: "08:30", staffClose: "17:30", closed: false },
+  Friday: { publicOpen: "09:00", publicClose: "17:00", staffOpen: "08:30", staffClose: "17:30", closed: false },
+  Saturday: { publicOpen: "09:00", publicClose: "17:00", staffOpen: "08:30", staffClose: "17:30", closed: true },
+  Sunday: { publicOpen: "09:00", publicClose: "17:00", staffOpen: "08:30", staffClose: "17:30", closed: true },
 };
 
 // Serialize week hours to a string for storage
@@ -74,7 +76,7 @@ function serializeHours(hours: WeekHours): string {
     if (h.closed) {
       lines.push(`${day}: Closed`);
     } else {
-      lines.push(`${day}: ${h.open} - ${h.close}`);
+      lines.push(`${day}: Public ${h.publicOpen} - ${h.publicClose}; Staff ${h.staffOpen} - ${h.staffClose}`);
     }
   }
   return lines.join("\n");
@@ -95,11 +97,25 @@ function parseHours(str: string): WeekHours {
         if (value.toLowerCase() === "closed") {
           result[dayName] = { ...result[dayName], closed: true };
         } else {
+          const splitMatch = value.match(/Public\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2});\s*Staff\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/i);
+          if (splitMatch) {
+            result[dayName] = {
+              publicOpen: splitMatch[1],
+              publicClose: splitMatch[2],
+              staffOpen: splitMatch[3],
+              staffClose: splitMatch[4],
+              closed: false,
+            };
+            continue;
+          }
+
           const timeMatch = value.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
           if (timeMatch) {
             result[dayName] = {
-              open: timeMatch[1],
-              close: timeMatch[2],
+              publicOpen: timeMatch[1],
+              publicClose: timeMatch[2],
+              staffOpen: subtractMinutes(timeMatch[1], 30),
+              staffClose: addMinutes(timeMatch[2], 30),
               closed: false,
             };
           }
@@ -108,6 +124,16 @@ function parseHours(str: string): WeekHours {
     }
   }
   return result;
+}
+
+function addMinutes(time: string, minutes: number) {
+  const [hours, mins] = time.split(":").map(Number);
+  const total = Math.max(0, hours * 60 + mins + minutes);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function subtractMinutes(time: string, minutes: number) {
+  return addMinutes(time, -minutes);
 }
 
 export function FacilityAdmin() {
@@ -128,6 +154,7 @@ export function FacilityAdmin() {
   // Initialise local state when tenant loads
   useEffect(() => {
     if (tenant) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(tenant.name);
       setContactEmail(tenant.contactEmail);
       setNotificationEmails(tenant.notificationEmails.join(", "));
@@ -288,7 +315,6 @@ export function FacilityAdmin() {
         <div className="divide-y divide-border">
           {DAYS.map((day) => {
             const hours = weekHours[day];
-            const isWeekend = day === "Saturday" || day === "Sunday";
             return (
               <div
                 key={day}
@@ -315,20 +341,43 @@ export function FacilityAdmin() {
                       </Label>
                     </div>
                     {!hours.closed && (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="time"
-                          value={hours.open}
-                          onChange={(e) => updateDayHours(day, "open", e.target.value)}
-                          className="w-28"
-                        />
-                        <span className="text-sm text-muted-foreground">to</span>
-                        <Input
-                          type="time"
-                          value={hours.close}
-                          onChange={(e) => updateDayHours(day, "close", e.target.value)}
-                          className="w-28"
-                        />
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        <div>
+                          <p className="mb-1 text-xs font-medium text-muted-foreground">Public booking hours</p>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="time"
+                              value={hours.publicOpen}
+                              onChange={(e) => updateDayHours(day, "publicOpen", e.target.value)}
+                              className="w-28"
+                            />
+                            <span className="text-sm text-muted-foreground">to</span>
+                            <Input
+                              type="time"
+                              value={hours.publicClose}
+                              onChange={(e) => updateDayHours(day, "publicClose", e.target.value)}
+                              className="w-28"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <p className="mb-1 text-xs font-medium text-muted-foreground">Staff setup/cleanup hours</p>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="time"
+                              value={hours.staffOpen}
+                              onChange={(e) => updateDayHours(day, "staffOpen", e.target.value)}
+                              className="w-28"
+                            />
+                            <span className="text-sm text-muted-foreground">to</span>
+                            <Input
+                              type="time"
+                              value={hours.staffClose}
+                              onChange={(e) => updateDayHours(day, "staffClose", e.target.value)}
+                              className="w-28"
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
