@@ -1,4 +1,4 @@
-export type Role = "Admin" | "Staff" | "Requester";
+export type Role = "Developer" | "Admin" | "Staff" | "Requester";
 export type RequestStatus = "Pending" | "Approved" | "Completed" | "Declined" | "Cancelled";
 
 export type RoomType = {

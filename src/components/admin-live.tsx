@@ -20,7 +20,8 @@ const fieldTypes: FormFieldType[] = [
   "note",
 ];
 
-const roles: Role[] = ["Admin", "Staff", "Requester"];
+const roles = ["Admin", "Staff", "Requester"] as const satisfies readonly Role[];
+type TenantAccountRole = (typeof roles)[number];
 
 const standardFields = [
   { label: "Name", type: "text", required: true },
@@ -1108,6 +1109,7 @@ export function AccountsAdmin() {
   const deleteUser = useMutation(api.tenants.deleteUser);
   const [editingId, setEditingId] = useState<Id<"users"> | null>(null);
   const editing = users?.find((user) => user._id === editingId);
+  const editingDeveloper = editing?.role === "Developer";
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1120,7 +1122,7 @@ export function AccountsAdmin() {
       userId: editingId ?? undefined,
       name: submitValue(form, "name"),
       email: submitValue(form, "email"),
-      role: submitValue(form, "role") as Role,
+      role: submitValue(form, "role") as TenantAccountRole,
     });
 
     form.reset();
@@ -1135,45 +1137,51 @@ export function AccountsAdmin() {
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <Card>
           <h2 className="font-semibold">
-            {editing ? "Edit user" : "Add user"}
+            {editingDeveloper ? "Developer account" : editing ? "Edit user" : "Add user"}
           </h2>
 
-          <form
-            key={editing?._id ?? "new"}
-            onSubmit={onSubmit}
-            className="mt-4 grid gap-3"
-          >
-            <input
-              name="name"
-              defaultValue={editing?.name}
-              placeholder="Name"
-              required
-              className="rounded-xl border border-blue-100 px-3 py-2"
-            />
-
-            <input
-              name="email"
-              type="email"
-              defaultValue={editing?.email}
-              placeholder="Email"
-              required
-              className="rounded-xl border border-blue-100 px-3 py-2"
-            />
-
-            <select
-              name="role"
-              defaultValue={editing?.role ?? "Staff"}
-              className="rounded-xl border border-blue-100 px-3 py-2"
+          {editingDeveloper ? (
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-slate-700">
+              Developer users are managed by bootstrap tooling.
+            </div>
+          ) : (
+            <form
+              key={editing?._id ?? "new"}
+              onSubmit={onSubmit}
+              className="mt-4 grid gap-3"
             >
-              {roles.map((role) => (
-                <option key={role}>{role}</option>
-              ))}
-            </select>
+              <input
+                name="name"
+                defaultValue={editing?.name}
+                placeholder="Name"
+                required
+                className="rounded-xl border border-blue-100 px-3 py-2"
+              />
 
-            <button className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">
-              {editing ? "Save user" : "Add user"}
-            </button>
-          </form>
+              <input
+                name="email"
+                type="email"
+                defaultValue={editing?.email}
+                placeholder="Email"
+                required
+                className="rounded-xl border border-blue-100 px-3 py-2"
+              />
+
+              <select
+                name="role"
+                defaultValue={editing?.role ?? "Staff"}
+                className="rounded-xl border border-blue-100 px-3 py-2"
+              >
+                {roles.map((role) => (
+                  <option key={role}>{role}</option>
+                ))}
+              </select>
+
+              <button className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">
+                {editing ? "Save user" : "Add user"}
+              </button>
+            </form>
+          )}
         </Card>
 
         <Card>
@@ -1189,24 +1197,28 @@ export function AccountsAdmin() {
 
               <div className="flex items-center gap-2">
                 <StatusPill status={user.role} />
-                <button
-                  onClick={() => setEditingId(user._id)}
-                  className="rounded-lg border border-blue-100 px-2 py-1 text-xs"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() =>
-                    deleteUser({
-                      tenantSlug,
-                      auth,
-                      userId: user._id,
-                    })
-                  }
-                  className="rounded-lg border border-rose-100 px-2 py-1 text-xs text-rose-700"
-                >
-                  <Trash2 className="size-3" />
-                </button>
+                {user.role === "Developer" ? null : (
+                  <>
+                    <button
+                      onClick={() => setEditingId(user._id)}
+                      className="rounded-lg border border-blue-100 px-2 py-1 text-xs"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() =>
+                        deleteUser({
+                          tenantSlug,
+                          auth,
+                          userId: user._id,
+                        })
+                      }
+                      className="rounded-lg border border-rose-100 px-2 py-1 text-xs text-rose-700"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}

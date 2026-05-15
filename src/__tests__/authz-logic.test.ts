@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { canAccessAdmin, canAccessStaff } from "@/lib/authz-logic";
 
 describe("role access helpers", () => {
+  it("allows developer access to admin and staff areas", () => {
+    expect(canAccessAdmin("Developer")).toBe(true);
+    expect(canAccessStaff("Developer")).toBe(true);
+  });
+
   it("allows admin access to admin and staff areas", () => {
     expect(canAccessAdmin("Admin")).toBe(true);
     expect(canAccessStaff("Admin")).toBe(true);
