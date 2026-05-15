@@ -59,25 +59,25 @@ export default async function AccessPage() {
 
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-2xl content-center px-4 py-10">
-      <section className="rounded-lg border border-blue-100 bg-white p-6 shadow-sm">
-        <p className="text-sm font-semibold uppercase text-blue-600">
+      <section className="rounded-lg border border-border bg-card p-6 shadow-sm">
+        <p className="text-sm font-semibold uppercase text-primary">
           Account access
         </p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-950">
+        <h1 className="mt-2 text-2xl font-semibold text-foreground">
           Choose a SimHub workspace
         </h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-muted-foreground">
           You are signed in with WorkOS. SimHub still needs a matching Convex
           user record with a Staff or Admin role before the dashboard can load.
         </p>
 
         {dashboardMemberships.length > 0 ? (
           <form action={selectTenant} className="mt-5 grid gap-3">
-            <label className="grid gap-1 text-sm font-medium text-slate-700">
+            <label className="grid gap-1 text-sm font-medium text-foreground">
               Tenant
               <select
                 name="tenantSlug"
-                className="rounded-md border border-blue-100 px-3 py-2"
+                className="rounded-md border border-border px-3 py-2"
                 defaultValue={dashboardMemberships[0]?.tenantSlug}
               >
                 {dashboardMemberships.map((membership) => (
@@ -90,12 +90,12 @@ export default async function AccessPage() {
                 ))}
               </select>
             </label>
-            <button className="justify-self-start rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            <button className="justify-self-start rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
               Continue
             </button>
           </form>
         ) : (
-          <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="mt-5 rounded-md border border-border bg-primary/10 p-4 text-sm text-foreground">
             No Staff or Admin tenant access was found for your WorkOS account.
             Ask a SimHub admin to add your email to the correct tenant in
             Convex, then sign in again.
@@ -104,10 +104,10 @@ export default async function AccessPage() {
 
         {memberships.length > dashboardMemberships.length ? (
           <div className="mt-5">
-            <h2 className="text-sm font-semibold text-slate-900">
+            <h2 className="text-sm font-semibold text-foreground">
               Other memberships
             </h2>
-            <ul className="mt-2 grid gap-2 text-sm text-slate-600">
+            <ul className="mt-2 grid gap-2 text-sm text-muted-foreground">
               {memberships
                 .filter(
                   (membership) =>
@@ -124,7 +124,7 @@ export default async function AccessPage() {
 
         <a
           href="/auth/sign-out"
-          className="mt-5 inline-flex text-sm font-medium text-slate-600 hover:text-blue-700"
+          className="mt-5 inline-flex text-sm font-medium text-muted-foreground hover:text-primary"
         >
           Sign out
         </a>

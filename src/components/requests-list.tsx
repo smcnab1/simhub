@@ -17,7 +17,7 @@ export function RequestsList() {
     <>
       <SectionHeader title="Requests" eyebrow="Workflow" />
       <div className="mb-4 flex flex-wrap gap-2">
-        {statuses.map((status) => <button key={status} className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-sm">{status}</button>)}
+        {statuses.map((status) => <button key={status} className="rounded-full border border-border bg-card px-3 py-1.5 text-sm">{status}</button>)}
       </div>
       <div className="grid gap-3">
         {(requests ?? []).map((request) => (
@@ -33,7 +33,7 @@ export function RequestsList() {
             }}
           />
         ))}
-        {requests?.length === 0 ? <p className="rounded-2xl border border-dashed border-blue-100 bg-white/70 p-5 text-sm text-slate-500">No requests in Convex yet.</p> : null}
+        {requests?.length === 0 ? <p className="rounded-2xl border border-dashed border-border bg-card/80 p-5 text-sm text-muted-foreground">No requests in Convex yet.</p> : null}
       </div>
     </>
   );

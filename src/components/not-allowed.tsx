@@ -8,8 +8,8 @@ export function NotAllowed({
   message = "Your current SimHub role does not allow access to this area.",
 }: NotAllowedProps) {
   return (
-    <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950">
-      <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">
+    <section className="rounded-lg border border-border bg-primary/10 p-5 text-foreground">
+      <p className="text-sm font-semibold uppercase tracking-wide text-primary">
         Access restricted
       </p>
       <h1 className="mt-2 text-xl font-semibold">{title}</h1>

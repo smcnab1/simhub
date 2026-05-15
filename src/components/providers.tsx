@@ -13,20 +13,26 @@ export function Providers({ children }: { children: ReactNode }) {
     [convexUrl],
   );
 
-  if (!convex)
-    return (
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-        {children}
-        <Toaster />
-      </ThemeProvider>
-    );
+  const content = convex ? (
+    <ConvexProvider client={convex}>
+      {children}
+      <Toaster />
+    </ConvexProvider>
+  ) : (
+    <>
+      {children}
+      <Toaster />
+    </>
+  );
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-      <ConvexProvider client={convex}>
-        {children}
-        <Toaster />
-      </ConvexProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem={true}
+      disableTransitionOnChange
+    >
+      {content}
     </ThemeProvider>
   );
 }

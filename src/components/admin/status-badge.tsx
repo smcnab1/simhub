@@ -20,7 +20,7 @@ const variantMap: Record<StatusVariant, { label: string; className: string }> = 
   active: {
     label: "Active",
     className:
-      "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50",
+      "bg-primary/10 text-primary border-border hover:bg-primary/10",
   },
   inactive: {
     label: "Inactive",
@@ -28,20 +28,20 @@ const variantMap: Record<StatusVariant, { label: string; className: string }> = 
   },
   pending: {
     label: "Pending",
-    className: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-50",
+    className: "bg-primary/10 text-primary border-border hover:bg-primary/10",
   },
   approved: {
     label: "Approved",
     className:
-      "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50",
+      "bg-primary/10 text-primary border-border hover:bg-primary/10",
   },
   declined: {
     label: "Declined",
-    className: "bg-red-50 text-red-700 border-red-200 hover:bg-red-50",
+    className: "bg-destructive/10 text-destructive border-border hover:bg-destructive/10",
   },
   completed: {
     label: "Completed",
-    className: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50",
+    className: "bg-muted text-primary border-border hover:bg-muted",
   },
   cancelled: {
     label: "Cancelled",
@@ -50,16 +50,16 @@ const variantMap: Record<StatusVariant, { label: string; className: string }> = 
   special: {
     label: "Special",
     className:
-      "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-50",
+      "bg-primary/10 text-primary border-border hover:bg-primary/10",
   },
   admin: {
     label: "Admin",
-    className: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50",
+    className: "bg-muted text-primary border-border hover:bg-muted",
   },
   staff: {
     label: "Staff",
     className:
-      "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50",
+      "bg-primary/10 text-primary border-border hover:bg-primary/10",
   },
   requester: {
     label: "Requester",
@@ -67,7 +67,7 @@ const variantMap: Record<StatusVariant, { label: string; className: string }> = 
   },
   required: {
     label: "Required",
-    className: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50",
+    className: "bg-muted text-primary border-border hover:bg-muted",
   },
   optional: {
     label: "Optional",
@@ -108,7 +108,7 @@ export function StatusDot({ active }: { active: boolean }) {
     <span
       className={cn(
         "inline-block size-2 rounded-full",
-        active ? "bg-emerald-500" : "bg-muted-foreground/40"
+        active ? "bg-primary/100" : "bg-muted-foreground/40"
       )}
       aria-hidden="true"
     />

@@ -166,9 +166,9 @@ function isUnallocated(request: CalendarRequest) {
 
 function bookingChipClass(status: string) {
   if (status === "Approved") {
-    return "border-blue-600 bg-blue-600 text-white shadow-blue-600/20";
+    return "border-primary bg-primary text-primary-foreground shadow-primary/20";
   }
-  return "border-slate-300 bg-slate-100 text-slate-700 shadow-slate-200/40";
+  return "border-border bg-muted text-foreground shadow-foreground/10";
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -188,8 +188,8 @@ function FilterToggle({
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
         active
-          ? "border-blue-600 bg-blue-600 text-white"
-          : "border-blue-100 bg-white text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-primary"
       }`}
     >
       {children}
@@ -227,8 +227,8 @@ function CampusHeaderRow({
     <div className="contents" role="rowgroup">
       {/* Campus label cell */}
       <div
-        className={`flex items-center justify-between gap-2 border-b border-blue-200 px-3 py-2 ${
-          isCollapsed ? "bg-blue-50/70" : "bg-blue-50/40"
+        className={`flex items-center justify-between gap-2 border-b border-border px-3 py-2 ${
+          isCollapsed ? "bg-muted/70" : "bg-muted/40"
         }`}
       >
         <button
@@ -239,11 +239,11 @@ function CampusHeaderRow({
           aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${campusName}`}
         >
           {isCollapsed ? (
-            <ChevronRight className="size-3.5 shrink-0 text-blue-600" />
+            <ChevronRight className="size-3.5 shrink-0 text-primary" />
           ) : (
-            <ChevronDown className="size-3.5 shrink-0 text-blue-600" />
+            <ChevronDown className="size-3.5 shrink-0 text-primary" />
           )}
-          <span className="truncate text-sm font-bold text-slate-900">
+          <span className="truncate text-sm font-bold text-foreground">
             {campusName}
           </span>
         </button>
@@ -251,7 +251,7 @@ function CampusHeaderRow({
           type="button"
           onClick={onToggleVisibility}
           aria-label={isVisible ? `Hide ${campusName}` : `Show ${campusName}`}
-          className="shrink-0 rounded p-0.5 text-slate-400 hover:text-slate-600"
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-muted-foreground"
         >
           {isVisible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
         </button>
@@ -259,32 +259,32 @@ function CampusHeaderRow({
 
       {/* Campus summary timeline (shown when collapsed) */}
       <div
-        className={`relative border-b border-l border-blue-200 px-3 py-2 ${
-          isCollapsed ? "bg-blue-50/70" : "bg-blue-50/40"
+        className={`relative border-b border-l border-border px-3 py-2 ${
+          isCollapsed ? "bg-muted/70" : "bg-muted/40"
         }`}
         style={{ gridColumn: `span ${hourCount}` }}
       >
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-          <span className="font-medium text-slate-800">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">
             {rooms.length} room{rooms.length !== 1 ? "s" : ""}
           </span>
           {campusBookings.length > 0 ? (
             <>
-              <span className="text-slate-400">·</span>
+              <span className="text-muted-foreground">·</span>
               <span>{campusBookings.length} booking{campusBookings.length !== 1 ? "s" : ""}</span>
               {pendingCount > 0 && (
-                <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700">
+                <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">
                   {pendingCount} pending
                 </span>
               )}
               {approvedCount > 0 && (
-                <span className="rounded-full bg-blue-600 px-2 py-0.5 font-medium text-white">
+                <span className="rounded-full bg-primary px-2 py-0.5 font-medium text-primary-foreground">
                   {approvedCount} approved
                 </span>
               )}
             </>
           ) : (
-            <span className="text-slate-400">No bookings today</span>
+            <span className="text-muted-foreground">No bookings today</span>
           )}
         </div>
       </div>
@@ -305,12 +305,12 @@ function RoomRow({
   return (
     <div className="contents" role="row">
       {/* Room label */}
-      <div className="flex flex-col justify-center border-b border-blue-100 px-3 py-2" role="rowheader">
-        <p className="text-sm font-semibold leading-tight text-slate-800">
+      <div className="flex flex-col justify-center border-b border-border px-3 py-2" role="rowheader">
+        <p className="text-sm font-semibold leading-tight text-foreground">
           {room.code}
         </p>
-        <p className="truncate text-xs text-slate-500">{room.name}</p>
-        <p className="text-xs text-slate-400">
+        <p className="truncate text-xs text-muted-foreground">{room.name}</p>
+        <p className="text-xs text-muted-foreground">
           {room.roomType?.name ?? "No type"} ·{" "}
           <Users className="mb-0.5 inline size-3" /> {room.capacity}
         </p>
@@ -318,7 +318,7 @@ function RoomRow({
 
       {/* Timeline */}
       <div
-        className="relative min-h-[4rem] border-b border-l border-blue-100 bg-white/40"
+        className="relative min-h-[4rem] border-b border-l border-border bg-card/40"
         style={{ gridColumn: `span ${hourCount}` }}
         role="cell"
       >
@@ -328,7 +328,7 @@ function RoomRow({
           style={{ gridTemplateColumns: `repeat(${hourCount}, 1fr)` }}
         >
           {hours.map((h) => (
-            <div key={h} className="border-l border-blue-50 first:border-l-0" />
+            <div key={h} className="border-l border-border/60 first:border-l-0" />
           ))}
         </div>
 
@@ -372,10 +372,10 @@ function RoomRow({
 function UnallocatedPanel({ bookings }: { bookings: CalendarRequest[] }) {
   if (bookings.length === 0) return null;
   return (
-    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+    <div className="mb-4 rounded-xl border border-border bg-primary/10 p-4">
       <div className="mb-2 flex items-center gap-2">
-        <AlertTriangle className="size-4 text-amber-600" />
-        <p className="text-sm font-semibold text-amber-800">
+        <AlertTriangle className="size-4 text-primary" />
+        <p className="text-sm font-semibold text-foreground">
           Unallocated bookings — not assigned to any room
         </p>
       </div>
@@ -384,10 +384,10 @@ function UnallocatedPanel({ bookings }: { bookings: CalendarRequest[] }) {
           <a
             key={b._id}
             href={`/dashboard/requests/${b._id}`}
-            className="inline-flex flex-col rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs shadow-sm hover:border-amber-400"
+            className="inline-flex flex-col rounded-lg border border-border bg-card px-3 py-1.5 text-xs shadow-sm hover:border-ring"
           >
-            <span className="font-semibold text-slate-800">{b.sessionName}</span>
-            <span className="text-slate-500">
+            <span className="font-semibold text-foreground">{b.sessionName}</span>
+            <span className="text-muted-foreground">
               {b.requesterName} · <StatusPill status={b.status} />
             </span>
           </a>
@@ -578,12 +578,12 @@ export function ResourceCalendar() {
         eyebrow="Operations"
         action={
           <div className="flex flex-wrap gap-2">
-            <button className="rounded-lg border border-blue-100 bg-white/90 px-3 py-2 text-sm font-medium shadow-sm hover:bg-blue-50">
+            <button className="rounded-lg border border-border bg-card/90 px-3 py-2 text-sm font-medium shadow-sm hover:bg-muted">
               Block Time
             </button>
             <a
               href="/book"
-              className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700"
+              className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
             >
               Add booking
             </a>
@@ -602,7 +602,7 @@ export function ResourceCalendar() {
                 type="button"
                 onClick={() => setSelectedDate(addDays(selectedDate, -1))}
                 aria-label="Previous day"
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-100 bg-white text-slate-600 shadow-sm hover:bg-blue-50 hover:text-blue-700"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm hover:bg-muted hover:text-primary"
               >
                 <ChevronLeft className="size-4" />
               </button>
@@ -619,9 +619,9 @@ export function ResourceCalendar() {
                   className="absolute inset-0 cursor-pointer opacity-0"
                   aria-label="Select date"
                 />
-                <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2 shadow-sm">
-                  <Calendar className="size-4 text-blue-600" />
-                  <span className="text-sm font-semibold text-slate-900">
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+                  <Calendar className="size-4 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">
                     {formatShortDateUK(selectedDate)}
                   </span>
                 </div>
@@ -631,7 +631,7 @@ export function ResourceCalendar() {
                 type="button"
                 onClick={() => setSelectedDate(addDays(selectedDate, 1))}
                 aria-label="Next day"
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-blue-100 bg-white text-slate-600 shadow-sm hover:bg-blue-50 hover:text-blue-700"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm hover:bg-muted hover:text-primary"
               >
                 <ChevronRight className="size-4" />
               </button>
@@ -639,7 +639,7 @@ export function ResourceCalendar() {
               <button
                 type="button"
                 onClick={() => setSelectedDate(startOfToday())}
-                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700"
+                className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
               >
                 Today
               </button>
@@ -647,13 +647,13 @@ export function ResourceCalendar() {
 
             {/* Center: Full date display */}
             <div className="hidden text-center md:block">
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-lg font-bold text-foreground">
                 {formatDateUK(selectedDate)}
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {bookingsForDay.length} booking{bookingsForDay.length !== 1 ? "s" : ""} · {totalRooms} room{totalRooms !== 1 ? "s" : ""}
                 {unallocatedBookings.length > 0 && (
-                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                     <AlertTriangle className="size-3" />
                     {unallocatedBookings.length} unallocated
                   </span>
@@ -677,7 +677,7 @@ export function ResourceCalendar() {
                   <select
                     value={roomTypeFilter}
                     onChange={(e) => setRoomTypeFilter(e.target.value)}
-                    className="appearance-none rounded-lg border border-blue-100 bg-white py-1.5 pl-2.5 pr-7 text-xs font-medium text-slate-700 shadow-sm hover:bg-blue-50"
+                    className="appearance-none rounded-lg border border-border bg-card py-1.5 pl-2.5 pr-7 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
                   >
                     <option value="all">All types</option>
                     {roomTypeNames.map((name) => (
@@ -686,26 +686,26 @@ export function ResourceCalendar() {
                       </option>
                     ))}
                   </select>
-                  <LayoutGrid className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-slate-400" />
+                  <LayoutGrid className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
                 </div>
               )}
             </div>
           </div>
 
           {/* Row 2: Campus controls (compact) */}
-          <div className="flex flex-wrap items-center gap-2 border-t border-blue-50 pt-3">
-            <span className="text-xs font-medium text-slate-500">Campuses:</span>
+          <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+            <span className="text-xs font-medium text-muted-foreground">Campuses:</span>
             <button
               type="button"
               onClick={expandAll}
-              className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-blue-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm hover:bg-muted"
             >
               <ChevronDown className="size-3" /> Expand all
             </button>
             <button
               type="button"
               onClick={collapseAll}
-              className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-blue-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm hover:bg-muted"
             >
               <ChevronUp className="size-3" /> Collapse all
             </button>
@@ -719,7 +719,7 @@ export function ResourceCalendar() {
               <button
                 type="button"
                 onClick={showAllCampuses}
-                className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 shadow-sm hover:bg-amber-100"
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary shadow-sm hover:bg-primary/10"
               >
                 <Eye className="size-3" /> Show all
               </button>
@@ -727,8 +727,8 @@ export function ResourceCalendar() {
 
             {/* Mobile date summary */}
             <div className="ml-auto text-right md:hidden">
-              <p className="text-sm font-bold text-slate-900">{formatShortDateUK(selectedDate)}</p>
-              <p className="text-xs text-slate-500">
+              <p className="text-sm font-bold text-foreground">{formatShortDateUK(selectedDate)}</p>
+              <p className="text-xs text-muted-foreground">
                 {bookingsForDay.length} booking{bookingsForDay.length !== 1 ? "s" : ""}
               </p>
             </div>
@@ -737,11 +737,11 @@ export function ResourceCalendar() {
 
         {/* ── Loading/empty states ─────────────────────────────────────── */}
         {isLoading ? (
-          <div className="rounded-xl border border-dashed border-blue-100 bg-white/60 p-6 text-center text-sm text-slate-500">
+          <div className="rounded-xl border border-dashed border-border bg-muted/40 p-6 text-center text-sm text-muted-foreground">
             Loading rooms and bookings…
           </div>
         ) : filteredRooms.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-blue-100 bg-white/60 p-6 text-center text-sm text-slate-500">
+          <div className="rounded-xl border border-dashed border-border bg-muted/40 p-6 text-center text-sm text-muted-foreground">
             {(rooms?.length ?? 0) === 0
               ? "No rooms configured yet. Add rooms in Admin → Rooms."
               : "No rooms match the current filter."}
@@ -764,7 +764,7 @@ export function ResourceCalendar() {
               >
                 {/* Header row: room label + hour headers */}
                 <div
-                  className="border-b border-blue-100 bg-white/60 px-3 py-2 text-xs font-semibold text-slate-500"
+                  className="border-b border-border bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground"
                   role="columnheader"
                 >
                   Room
@@ -772,7 +772,7 @@ export function ResourceCalendar() {
                 {hours.map((h) => (
                   <div
                     key={h}
-                    className="border-b border-blue-100 p-2 text-center text-xs font-medium text-slate-400"
+                    className="border-b border-border p-2 text-center text-xs font-medium text-muted-foreground"
                     role="columnheader"
                   >
                     {String(h).padStart(2, "0")}:00
@@ -820,14 +820,14 @@ export function ResourceCalendar() {
                 {/* No visible campuses fallback */}
                 {visibleGroups.length === 0 && (
                   <div
-                    className="col-span-full p-6 text-center text-sm text-slate-500"
+                    className="col-span-full p-6 text-center text-sm text-muted-foreground"
                     style={{ gridColumn: `span ${hourCount + 1}` }}
                   >
                     All campuses are hidden. Use{" "}
                     <button
                       type="button"
                       onClick={showAllCampuses}
-                      className="font-medium text-blue-600 underline hover:no-underline"
+                      className="font-medium text-primary underline hover:no-underline"
                     >
                       Show all
                     </button>{" "}
@@ -838,21 +838,21 @@ export function ResourceCalendar() {
             </div>
 
             {/* ── Legend ───────────────────────────────────────────────── */}
-            <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
-              <span className="font-medium text-slate-500">Legend:</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-slate-700">
-                <span className="size-2 rounded-full bg-slate-400" />
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span className="font-medium text-muted-foreground">Legend:</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-foreground">
+                <span className="size-2 rounded-full bg-muted-foreground" />
                 Pending
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-600 bg-blue-600 px-3 py-1 text-white">
-                <span className="size-2 rounded-full bg-white" />
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary px-3 py-1 text-primary-foreground">
+                <span className="size-2 rounded-full bg-card" />
                 Approved
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-amber-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-primary/10 px-3 py-1 text-primary">
                 <AlertTriangle className="size-3" />
                 Unallocated
               </span>
-              <span className="ml-auto flex items-center gap-1 text-slate-400">
+              <span className="ml-auto flex items-center gap-1 text-muted-foreground">
                 <ChevronsUpDown className="size-3" /> Click campus header to expand/collapse
               </span>
             </div>

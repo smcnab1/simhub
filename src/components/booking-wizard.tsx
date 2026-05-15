@@ -6,7 +6,7 @@ import { Upload } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { Card, SectionHeader } from "@/components/ui";
+import { Card, SectionHeader, formFieldClass, primaryButtonClass, subtleButtonClass } from "@/components/ui";
 import { TENANT_SLUG } from "@/lib/config";
 
 function value(form: HTMLFormElement, name: string) {
@@ -29,11 +29,11 @@ function renderCustomField(field: {
   helpText?: string;
   options?: string[];
 }) {
-  if (field.type === "divider") return <hr className="my-2 border-blue-100 md:col-span-2" />;
-  if (field.type === "note") return <p className="rounded-xl bg-blue-50 p-3 text-sm text-slate-600 md:col-span-2">{field.label}</p>;
+  if (field.type === "divider") return <hr className="my-2 border-border md:col-span-2" />;
+  if (field.type === "note") return <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground md:col-span-2">{field.label}</p>;
 
-  const base = "mt-1 w-full rounded-xl border border-blue-100 px-3 py-2";
-  const label = <span className="text-sm font-medium text-slate-700">{field.label}{field.required ? " *" : ""}</span>;
+  const base = formFieldClass;
+  const label = <span className="text-sm font-medium text-foreground">{field.label}{field.required ? " *" : ""}</span>;
   const name = `custom:${field.id}`;
 
   return (
@@ -58,7 +58,7 @@ function renderCustomField(field: {
       ) : null}
       {field.type === "number" ? <input name={name} type="number" required={field.required} className={base} /> : null}
       {field.type === "text" ? <input name={name} required={field.required} className={base} /> : null}
-      {field.helpText ? <span className="mt-1 block text-xs text-slate-500">{field.helpText}</span> : null}
+      {field.helpText ? <span className="mt-1 block text-xs text-muted-foreground">{field.helpText}</span> : null}
     </label>
   );
 }
@@ -154,59 +154,59 @@ export function BookingWizard() {
       <SectionHeader eyebrow="Request wizard" title="Book a Room" />
       <form onSubmit={onSubmit} className="grid gap-5">
         <Card>
-          <h2 className="font-semibold text-slate-950">1. Select room types and quantities</h2>
+          <h2 className="font-semibold text-foreground">1. Select room types and quantities</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {(roomTypes ?? []).map((room) => (
-              <label key={room._id} className="rounded-xl border border-blue-100 p-3">
+              <label key={room._id} className="rounded-xl border border-border p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium text-slate-950">{room.name}</p>
+                    <p className="font-medium text-foreground">{room.name}</p>
                   </div>
                 </div>
-                <p className="mt-3 text-sm text-slate-600">Max {room.maxDurationHours}h · {room.isSpecial ? "· special type" : ""}</p>
+                <p className="mt-3 text-sm text-muted-foreground">Max {room.maxDurationHours}h · {room.isSpecial ? "· special type" : ""}</p>
               </label>
             ))}
           </div>
-          {roomTypes?.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-blue-100 bg-white/60 p-4 text-sm text-slate-500">No room types configured yet.</p> : null}
+          {roomTypes?.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">No room types configured yet.</p> : null}
         </Card>
         <Card>
-          <h2 className="font-semibold text-slate-950">2. Choose date, time, and booking blocks</h2>
+          <h2 className="font-semibold text-foreground">2. Choose date, time, and booking blocks</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-5">
-            <label className="text-sm font-medium text-slate-700">Date<input name="date" type="date" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label className="text-sm font-medium text-slate-700">Setup start<input name="setupStart" type="time" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label className="text-sm font-medium text-slate-700">Session start<input name="sessionStart" type="time" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label className="text-sm font-medium text-slate-700">Session end<input name="sessionEnd" type="time" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label className="text-sm font-medium text-slate-700">Cleanup end<input name="cleanupEnd" type="time" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
+            <label className="text-sm font-medium text-foreground">Date<input name="date" type="date" required className={formFieldClass} /></label>
+            <label className="text-sm font-medium text-foreground">Setup start<input name="setupStart" type="time" required className={formFieldClass} /></label>
+            <label className="text-sm font-medium text-foreground">Session start<input name="sessionStart" type="time" required className={formFieldClass} /></label>
+            <label className="text-sm font-medium text-foreground">Session end<input name="sessionEnd" type="time" required className={formFieldClass} /></label>
+            <label className="text-sm font-medium text-foreground">Cleanup end<input name="cleanupEnd" type="time" required className={formFieldClass} /></label>
           </div>
         </Card>
         <Card>
-          <h2 className="font-semibold text-slate-950">3. Requester info and booking details</h2>
+          <h2 className="font-semibold text-foreground">3. Requester info and booking details</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <label><span className="text-sm font-medium text-slate-700">Name *</span><input name="requesterName" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label><span className="text-sm font-medium text-slate-700">Email *</span><input name="requesterEmail" type="email" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label><span className="text-sm font-medium text-slate-700">Phone</span><input name="requesterPhone" className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label><span className="text-sm font-medium text-slate-700">Session name *</span><input name="sessionName" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label><span className="text-sm font-medium text-slate-700">Attendees *</span><input name="attendeeCount" type="number" min="0" required className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label><span className="text-sm font-medium text-slate-700">CC emails</span><input name="ccEmails" className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
-            <label className="md:col-span-2"><span className="text-sm font-medium text-slate-700">Details *</span><textarea name="details" required className="mt-1 min-h-28 w-full rounded-xl border border-blue-100 px-3 py-2" /></label>
+            <label><span className="text-sm font-medium text-foreground">Name *</span><input name="requesterName" required className={formFieldClass} /></label>
+            <label><span className="text-sm font-medium text-foreground">Email *</span><input name="requesterEmail" type="email" required className={formFieldClass} /></label>
+            <label><span className="text-sm font-medium text-foreground">Phone</span><input name="requesterPhone" className={formFieldClass} /></label>
+            <label><span className="text-sm font-medium text-foreground">Session name *</span><input name="sessionName" required className={formFieldClass} /></label>
+            <label><span className="text-sm font-medium text-foreground">Attendees *</span><input name="attendeeCount" type="number" min="0" required className={formFieldClass} /></label>
+            <label><span className="text-sm font-medium text-foreground">CC emails</span><input name="ccEmails" className={formFieldClass} /></label>
+            <label className="md:col-span-2"><span className="text-sm font-medium text-foreground">Details *</span><textarea name="details" required className={`${formFieldClass} min-h-28`} /></label>
             {fields.map((field) => renderCustomField(field))}
           </div>
           {formConfig?.fileUploadEnabled ? (
-            <label className="mt-4 block rounded-xl border border-dashed border-blue-100 p-4">
-              <Upload className="size-5 text-blue-600" />
-              <span className="mt-2 block text-sm text-slate-700">Optional file upload. Max size: {maxUploadMb} MB.</span>
+            <label className="mt-4 block rounded-xl border border-dashed border-border p-4">
+              <Upload className="size-5 text-primary" />
+              <span className="mt-2 block text-sm text-foreground">Optional file upload. Max size: {maxUploadMb} MB.</span>
               <input name="attachments" type="file" multiple className="mt-3 block text-sm" />
             </label>
           ) : null}
         </Card>
         <Card>
-          <h2 className="font-semibold text-slate-950">4. Submit and track</h2>
-          <p className="mt-1 text-sm text-slate-600">Submission creates a Pending request and notifies staff.</p>
+          <h2 className="font-semibold text-foreground">4. Submit and track</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Submission creates a Pending request and notifies staff.</p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Submit request</button>
-            <Link href="/calendar" className="rounded-xl border border-blue-100 bg-white px-4 py-2 text-sm font-semibold">Back to calendar</Link>
-            {status ? <span className="text-sm text-slate-600">{status}</span> : null}
-            {trackingId ? <Link href={`/requests/${trackingId}`} className="text-sm font-semibold text-blue-700">View tracking page</Link> : null}
+            <button className={primaryButtonClass}>Submit request</button>
+            <Link href="/calendar" className={subtleButtonClass}>Back to calendar</Link>
+            {status ? <span className="text-sm text-muted-foreground">{status}</span> : null}
+            {trackingId ? <Link href={`/requests/${trackingId}`} className="text-sm font-semibold text-primary">View tracking page</Link> : null}
           </div>
         </Card>
       </form>

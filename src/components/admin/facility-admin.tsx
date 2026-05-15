@@ -181,7 +181,7 @@ export function FacilityAdmin() {
         actions={
           <div className="flex items-center gap-3">
             {hasChanges && (
-              <span className="flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+              <span className="flex items-center gap-1.5 text-xs text-primary font-medium">
                 <AlertCircleIcon className="size-3.5" />
                 Unsaved changes
               </span>

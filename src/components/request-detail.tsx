@@ -24,8 +24,8 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
     form.reset();
   }
 
-  if (request === undefined) return <p className="rounded-2xl border border-blue-100 bg-white/70 p-5 text-sm text-slate-500">Loading request...</p>;
-  if (!request) return <p className="rounded-2xl border border-dashed border-blue-100 bg-white/70 p-5 text-sm text-slate-500">Request not found.</p>;
+  if (request === undefined) return <p className="rounded-2xl border border-border bg-card/80 p-5 text-sm text-muted-foreground">Loading request...</p>;
+  if (!request) return <p className="rounded-2xl border border-dashed border-border bg-card/80 p-5 text-sm text-muted-foreground">Request not found.</p>;
 
   return (
     <>
@@ -35,35 +35,35 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
           <Card>
             <h2 className="font-semibold">Requester and booking blocks</h2>
             <dl className="mt-4 grid gap-3 md:grid-cols-3">
-              <div><dt className="text-sm text-slate-500">Requester</dt><dd className="font-medium">{request.requesterName}</dd></div>
-              <div><dt className="text-sm text-slate-500">Attendees</dt><dd className="font-medium">{request.attendeeCount}</dd></div>
-              <div><dt className="text-sm text-slate-500">Rooms</dt><dd className="font-medium">{formatRooms(request)}</dd></div>
-              <div><dt className="text-sm text-slate-500">Email</dt><dd className="font-medium">{request.requesterEmail}</dd></div>
-              <div><dt className="text-sm text-slate-500">Phone</dt><dd className="font-medium">{request.requesterPhone || "Not provided"}</dd></div>
-              <div><dt className="text-sm text-slate-500">CC</dt><dd className="font-medium">{request.ccEmails.length ? request.ccEmails.join(", ") : "None"}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Requester</dt><dd className="font-medium">{request.requesterName}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Attendees</dt><dd className="font-medium">{request.attendeeCount}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Rooms</dt><dd className="font-medium">{formatRooms(request)}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Email</dt><dd className="font-medium">{request.requesterEmail}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Phone</dt><dd className="font-medium">{request.requesterPhone || "Not provided"}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">CC</dt><dd className="font-medium">{request.ccEmails.length ? request.ccEmails.join(", ") : "None"}</dd></div>
             </dl>
-            <p className="mt-4 rounded-xl bg-white/70 p-3 text-sm text-slate-700">{request.details}</p>
+            <p className="mt-4 rounded-xl bg-card/80 p-3 text-sm text-foreground">{request.details}</p>
             <div className="mt-4 grid gap-2">
-              {request.blocks.map((block) => <p key={`${block.label}-${block.start}`} className="rounded-xl bg-blue-50 p-3 text-sm">{block.label}: {block.start} to {block.end}</p>)}
+              {request.blocks.map((block) => <p key={`${block.label}-${block.start}`} className="rounded-xl bg-muted p-3 text-sm">{block.label}: {block.start} to {block.end}</p>)}
             </div>
           </Card>
           <Card>
             <h2 className="font-semibold">Custom form inputs</h2>
             <div className="mt-3 grid gap-2">
-              {request.customInputs.map((field) => <p key={field.fieldId} className="text-sm text-slate-600">{field.label}: <span className="text-slate-900">{String(field.value)}</span></p>)}
-              {request.customInputs.length === 0 ? <p className="text-sm text-slate-500">No custom inputs captured.</p> : null}
+              {request.customInputs.map((field) => <p key={field.fieldId} className="text-sm text-muted-foreground">{field.label}: <span className="text-foreground">{String(field.value)}</span></p>)}
+              {request.customInputs.length === 0 ? <p className="text-sm text-muted-foreground">No custom inputs captured.</p> : null}
             </div>
           </Card>
           <Card>
             <h2 className="font-semibold">Comments</h2>
             <div className="mt-3 grid gap-2">
-              {request.comments.map((comment) => <p key={comment._id} className="rounded-xl bg-white/70 p-3 text-sm text-slate-600">{comment.bodyMarkdown}</p>)}
-              {request.comments.length === 0 ? <p className="text-sm text-slate-500">No comments yet.</p> : null}
+              {request.comments.map((comment) => <p key={comment._id} className="rounded-xl bg-card/80 p-3 text-sm text-muted-foreground">{comment.bodyMarkdown}</p>)}
+              {request.comments.length === 0 ? <p className="text-sm text-muted-foreground">No comments yet.</p> : null}
             </div>
             {!publicView ? (
               <form onSubmit={onComment} className="mt-3 grid gap-2">
-                <textarea name="comment" placeholder="Add a comment..." className="min-h-24 rounded-xl border border-blue-100 px-3 py-2 text-sm" />
-                <button className="justify-self-start rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white">Add comment</button>
+                <textarea name="comment" placeholder="Add a comment..." className="min-h-24 rounded-xl border border-border px-3 py-2 text-sm" />
+                <button className="justify-self-start rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">Add comment</button>
               </form>
             ) : null}
           </Card>
@@ -73,15 +73,15 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
             <Card>
               <h2 className="font-semibold">Workflow actions</h2>
               <div className="mt-3 grid gap-2">
-                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Approved" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Approve</button>
-                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Declined" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Decline</button>
-                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Pending" })} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-medium">Remain Pending</button>
+                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Approved" })} className="rounded-xl border border-border px-3 py-2 text-sm font-medium">Approve</button>
+                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Declined" })} className="rounded-xl border border-border px-3 py-2 text-sm font-medium">Decline</button>
+                <button onClick={() => updateStatus({ tenantSlug, auth: auth ?? {}, requestId: request._id, status: "Pending" })} className="rounded-xl border border-border px-3 py-2 text-sm font-medium">Remain Pending</button>
               </div>
             </Card>
           ) : null}
           <Card>
             <h2 className="font-semibold">Files</h2>
-            <p className="mt-2 text-sm text-slate-600">{request.attachmentStorageIds.length} attachment(s)</p>
+            <p className="mt-2 text-sm text-muted-foreground">{request.attachmentStorageIds.length} attachment(s)</p>
           </Card>
         </div>
       </div>

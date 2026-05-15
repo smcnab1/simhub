@@ -12,14 +12,6 @@
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --border: oklch(0.922 0 0);
-  --surface-elevated: rgb(255 255 255 / 0.84);
-  --surface-strong: rgb(255 255 255 / 0.94);
-  --surface-border: rgb(215 226 240 / 0.92);
-  --surface-shadow: 0 24px 80px -36px rgb(16 35 63 / 0.2);
-  --page-background:
-    radial-gradient(circle at top, rgb(231 241 255 / 0.95), transparent 32%),
-    linear-gradient(180deg, #fbfdff 0%, #f6f8fb 56%, #eef3f9 100%);
-  --focus-ring: 0 0 0 4px rgb(29 92 255 / 0.16);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -45,6 +37,14 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --surface-elevated: color-mix(in oklch, var(--card) 88%, transparent);
+  --surface-strong: color-mix(in oklch, var(--card) 96%, transparent);
+  --surface-border: color-mix(in oklch, var(--border) 84%, transparent);
+  --surface-shadow: 0 24px 80px -36px color-mix(in oklch, var(--foreground) 22%, transparent);
+  --page-background:
+    radial-gradient(circle at top, color-mix(in oklch, var(--primary) 8%, transparent), transparent 32%),
+    linear-gradient(180deg, var(--background) 0%, color-mix(in oklch, var(--muted) 55%, var(--background)) 100%);
+  --focus-ring: 0 0 0 4px color-mix(in oklch, var(--ring) 24%, transparent);
 }
 
 @theme inline {
@@ -58,7 +58,7 @@
   --color-secondary: var(--secondary);
   --color-border: var(--border);
   --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono);
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, SFMono-Regular, monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -103,7 +103,7 @@ body {
   min-height: 100vh;
   background: var(--page-background);
   background-attachment: fixed;
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -115,8 +115,8 @@ body::before {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(circle at 12% 14%, rgb(29 92 255 / 0.08), transparent 24%),
-    radial-gradient(circle at 88% 6%, rgb(14 165 168 / 0.08), transparent 18%);
+    radial-gradient(circle at 12% 14%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 24%),
+    radial-gradient(circle at 88% 6%, color-mix(in oklch, var(--ring) 7%, transparent), transparent 18%);
   pointer-events: none;
 }
 
@@ -136,6 +136,18 @@ input,
 select,
 textarea {
   outline: none;
+}
+
+input,
+select,
+textarea {
+  background: color-mix(in oklch, var(--background) 82%, transparent);
+  color: var(--foreground);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted-foreground);
 }
 
 :focus-visible {
@@ -187,6 +199,14 @@ textarea {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --surface-elevated: color-mix(in oklch, var(--card) 86%, transparent);
+  --surface-strong: color-mix(in oklch, var(--card) 94%, transparent);
+  --surface-border: color-mix(in oklch, var(--border) 88%, transparent);
+  --surface-shadow: 0 24px 80px -36px color-mix(in oklch, var(--foreground) 34%, transparent);
+  --page-background:
+    radial-gradient(circle at top, color-mix(in oklch, var(--primary) 7%, transparent), transparent 30%),
+    linear-gradient(180deg, var(--background) 0%, color-mix(in oklch, var(--muted) 45%, var(--background)) 100%);
+  --focus-ring: 0 0 0 4px color-mix(in oklch, var(--ring) 34%, transparent);
 }
 
 @layer base {

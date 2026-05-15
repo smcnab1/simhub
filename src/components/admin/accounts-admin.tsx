@@ -61,10 +61,10 @@ const roleDescriptions: Record<Role, string> = {
 };
 
 const roleColors: Record<Role, string> = {
-  Developer: "text-slate-700 bg-slate-100 border-slate-300",
-  Admin: "text-violet-600 bg-violet-50 border-violet-200",
-  Staff: "text-blue-600 bg-blue-50 border-blue-200",
-  Requester: "text-emerald-600 bg-emerald-50 border-emerald-200",
+  Developer: "text-foreground bg-muted border-border",
+  Admin: "text-primary bg-primary/10 border-border",
+  Staff: "text-primary bg-muted border-border",
+  Requester: "text-primary bg-primary/10 border-border",
 };
 
 function getInitials(name: string) {

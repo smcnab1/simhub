@@ -86,19 +86,19 @@ export function FacilityAdmin() {
         {tenant ? (
           <form onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Facility name
               </span>
               <input
                 name="name"
                 defaultValue={tenant.name}
                 required
-                className="mt-1 w-full rounded-xl border border-blue-100 bg-white/90 px-3 py-2 shadow-sm"
+                className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
               />
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Contact email
               </span>
               <input
@@ -106,34 +106,34 @@ export function FacilityAdmin() {
                 type="email"
                 defaultValue={tenant.contactEmail}
                 required
-                className="mt-1 w-full rounded-xl border border-blue-100 bg-white/90 px-3 py-2 shadow-sm"
+                className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
               />
             </label>
 
             <label className="md:col-span-2">
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Notification emails
               </span>
               <input
                 name="notificationEmails"
                 defaultValue={tenant.notificationEmails.join(", ")}
-                className="mt-1 w-full rounded-xl border border-blue-100 bg-white/90 px-3 py-2 shadow-sm"
+                className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
               />
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Hours of operation
               </span>
               <input
                 name="hoursOfOperation"
                 defaultValue={tenant.hoursOfOperation}
-                className="mt-1 w-full rounded-xl border border-blue-100 bg-white/90 px-3 py-2 shadow-sm"
+                className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
               />
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Upload limit (MB)
               </span>
               <input
@@ -142,22 +142,22 @@ export function FacilityAdmin() {
                 min="1"
                 max="100"
                 defaultValue={Math.round(tenant.uploadMaxBytes / 1024 / 1024)}
-                className="mt-1 w-full rounded-xl border border-blue-100 bg-white/90 px-3 py-2 shadow-sm"
+                className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
               />
             </label>
 
             <div className="flex items-center gap-3 md:col-span-2">
-              <button className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700">
+              <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">
                 <Save className="size-4" />
                 Save facility
               </button>
               {status ? (
-                <p className="text-sm text-emerald-700">{status}</p>
+                <p className="text-sm text-primary">{status}</p>
               ) : null}
             </div>
           </form>
         ) : (
-          <p className="text-sm text-slate-500">Loading tenant settings...</p>
+          <p className="text-sm text-muted-foreground">Loading tenant settings...</p>
         )}
       </Card>
     </>
@@ -219,7 +219,7 @@ export function CampusesAdmin() {
             className="mt-4 grid gap-3"
           >
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Campus / site name
               </span>
               <input
@@ -227,12 +227,12 @@ export function CampusesAdmin() {
                 defaultValue={editing?.name}
                 placeholder="Paragon House"
                 required
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               />
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Sort order
               </span>
               <input
@@ -240,11 +240,11 @@ export function CampusesAdmin() {
                 type="number"
                 min="0"
                 defaultValue={editing?.sortOrder ?? ""}
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               />
             </label>
 
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
               <input
                 name="active"
                 type="checkbox"
@@ -254,7 +254,7 @@ export function CampusesAdmin() {
             </label>
 
             <div className="flex gap-2">
-              <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">
+              <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">
                 <Plus className="size-4" />
                 {editing ? "Save changes" : "Add campus"}
               </button>
@@ -263,7 +263,7 @@ export function CampusesAdmin() {
                 <button
                   type="button"
                   onClick={() => setEditingId(null)}
-                  className="rounded-lg border border-blue-100 px-3 py-2 text-sm font-semibold"
+                  className="rounded-lg border border-border px-3 py-2 text-sm font-semibold"
                 >
                   Cancel
                 </button>
@@ -275,7 +275,7 @@ export function CampusesAdmin() {
         <Card>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-slate-500">
+              <thead className="text-muted-foreground">
                 <tr>
                   <th className="py-2">Site</th>
                   <th>Sort</th>
@@ -285,7 +285,7 @@ export function CampusesAdmin() {
               </thead>
               <tbody>
                 {(campuses ?? []).map((campus) => (
-                  <tr key={campus._id} className="border-t border-blue-100">
+                  <tr key={campus._id} className="border-t border-border">
                     <td className="py-3 font-medium">{campus.name}</td>
                     <td>{campus.sortOrder ?? "—"}</td>
                     <td>
@@ -297,7 +297,7 @@ export function CampusesAdmin() {
                       <button
                         type="button"
                         onClick={() => setEditingId(campus._id)}
-                        className="rounded-lg border border-blue-100 px-2 py-1 text-xs"
+                        className="rounded-lg border border-border px-2 py-1 text-xs"
                       >
                         Edit
                       </button>
@@ -321,7 +321,7 @@ export function CampusesAdmin() {
             </table>
 
             {campuses?.length === 0 ? (
-              <p className="py-4 text-sm text-slate-500">
+              <p className="py-4 text-sm text-muted-foreground">
                 No campuses configured yet. Add sites such as London Campus,
                 Cambridge Campus or another location.
               </p>
@@ -400,13 +400,13 @@ export function RoomTypesAdmin() {
             className="mt-4 grid gap-3"
           >
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Campus / site
               </span>
               <select
                 name="campusId"
                 defaultValue={editing?.campusId ?? ""}
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               >
                 <option value="">All campuses / no specific campus</option>
                 {(campuses ?? []).map((campus) => (
@@ -419,7 +419,7 @@ export function RoomTypesAdmin() {
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Name
               </span>
               <input
@@ -427,25 +427,25 @@ export function RoomTypesAdmin() {
                 defaultValue={editing?.name}
                 placeholder="Classroom"
                 required
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               />
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Description
               </span>
               <textarea
                 name="description"
                 defaultValue={editing?.description}
                 placeholder="Describe the room type, usual layout, limitations or use cases."
-                className="mt-1 min-h-24 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 min-h-24 w-full rounded-xl border border-border px-3 py-2"
               />
             </label>
 
             <div className="grid grid-cols-3 gap-2">
               <label>
-                <span className="text-sm font-semibold text-slate-700">
+                <span className="text-sm font-semibold text-foreground">
                   Default capacity
                 </span>
                 <input
@@ -453,12 +453,12 @@ export function RoomTypesAdmin() {
                   type="number"
                   min="0"
                   defaultValue={editing?.defaultCapacity ?? 1}
-                  className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2"
                 />
               </label>
 
               <label>
-                <span className="text-sm font-semibold text-slate-700">
+                <span className="text-sm font-semibold text-foreground">
                   Max h
                 </span>
                 <input
@@ -466,12 +466,12 @@ export function RoomTypesAdmin() {
                   type="number"
                   min="1"
                   defaultValue={editing?.maxDurationHours ?? ""}
-                  className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2"
                 />
               </label>
 
               <label>
-                <span className="text-sm font-semibold text-slate-700">
+                <span className="text-sm font-semibold text-foreground">
                   Sort
                 </span>
                 <input
@@ -479,12 +479,12 @@ export function RoomTypesAdmin() {
                   type="number"
                   min="0"
                   defaultValue={editing?.sortOrder ?? ""}
-                  className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                  className="mt-1 w-full rounded-xl border border-border px-3 py-2"
                 />
               </label>
             </div>
 
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
               <input
                 name="isSpecial"
                 type="checkbox"
@@ -493,7 +493,7 @@ export function RoomTypesAdmin() {
               Special/non-standard room type
             </label>
 
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
               <input
                 name="active"
                 type="checkbox"
@@ -503,7 +503,7 @@ export function RoomTypesAdmin() {
             </label>
 
             <div className="flex gap-2">
-              <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">
+              <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">
                 <Plus className="size-4" />
                 {editing ? "Save changes" : "Add room type"}
               </button>
@@ -512,7 +512,7 @@ export function RoomTypesAdmin() {
                 <button
                   type="button"
                   onClick={() => setEditingId(null)}
-                  className="rounded-lg border border-blue-100 px-3 py-2 text-sm font-semibold"
+                  className="rounded-lg border border-border px-3 py-2 text-sm font-semibold"
                 >
                   Cancel
                 </button>
@@ -524,7 +524,7 @@ export function RoomTypesAdmin() {
         <Card>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-slate-500">
+              <thead className="text-muted-foreground">
                 <tr>
                   <th className="py-2">Type</th>
                   <th>Campus</th>
@@ -538,11 +538,11 @@ export function RoomTypesAdmin() {
               </thead>
               <tbody>
                 {(roomTypes ?? []).map((roomType) => (
-                  <tr key={roomType._id} className="border-t border-blue-100">
+                  <tr key={roomType._id} className="border-t border-border">
                     <td className="py-3">
                       <p className="font-medium">{roomType.name}</p>
                       {roomType.description ? (
-                        <p className="max-w-xs truncate text-xs text-slate-500">
+                        <p className="max-w-xs truncate text-xs text-muted-foreground">
                           {roomType.description}
                         </p>
                       ) : null}
@@ -573,7 +573,7 @@ export function RoomTypesAdmin() {
                       <button
                         type="button"
                         onClick={() => setEditingId(roomType._id)}
-                        className="rounded-lg border border-blue-100 px-2 py-1 text-xs"
+                        className="rounded-lg border border-border px-2 py-1 text-xs"
                       >
                         Edit
                       </button>
@@ -597,7 +597,7 @@ export function RoomTypesAdmin() {
             </table>
 
             {roomTypes?.length === 0 ? (
-              <p className="py-4 text-sm text-slate-500">
+              <p className="py-4 text-sm text-muted-foreground">
                 No room types configured yet.
               </p>
             ) : null}
@@ -684,7 +684,7 @@ export function RoomsAdmin() {
             className="mt-4 grid gap-3"
           >
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Room code
               </span>
               <input
@@ -692,12 +692,12 @@ export function RoomsAdmin() {
                 defaultValue={editing?.code}
                 placeholder="PH900"
                 required
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               />
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Room name
               </span>
               <input
@@ -705,18 +705,18 @@ export function RoomsAdmin() {
                 defaultValue={editing?.name}
                 placeholder="Classroom PH900"
                 required
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               />
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Campus / site
               </span>
               <select
                 name="campusId"
                 defaultValue={editing?.campusId ?? ""}
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               >
                 <option value="">Use room type campus / no campus</option>
                 {(campuses ?? []).map((campus) => (
@@ -729,14 +729,14 @@ export function RoomsAdmin() {
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Room type
               </span>
               <select
                 name="roomTypeId"
                 defaultValue={editing?.roomTypeId ?? ""}
                 required
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               >
                 <option value="">Select room type...</option>
                 {(roomTypes ?? []).map((roomType) => (
@@ -750,7 +750,7 @@ export function RoomsAdmin() {
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Capacity
               </span>
               <input
@@ -759,23 +759,23 @@ export function RoomsAdmin() {
                 min="0"
                 defaultValue={editing?.capacity ?? 1}
                 required
-                className="mt-1 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2"
               />
             </label>
 
             <label>
-              <span className="text-sm font-semibold text-slate-700">
+              <span className="text-sm font-semibold text-foreground">
                 Description
               </span>
               <textarea
                 name="description"
                 defaultValue={editing?.description}
                 placeholder="Brief notes about the room, layout, limitations or usual use."
-                className="mt-1 min-h-24 w-full rounded-xl border border-blue-100 px-3 py-2"
+                className="mt-1 min-h-24 w-full rounded-xl border border-border px-3 py-2"
               />
             </label>
 
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
               <input
                 name="active"
                 type="checkbox"
@@ -785,7 +785,7 @@ export function RoomsAdmin() {
             </label>
 
             <div className="flex gap-2">
-              <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">
+              <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">
                 <Plus className="size-4" />
                 {editing ? "Save changes" : "Add room"}
               </button>
@@ -794,7 +794,7 @@ export function RoomsAdmin() {
                 <button
                   type="button"
                   onClick={() => setEditingId(null)}
-                  className="rounded-lg border border-blue-100 px-3 py-2 text-sm font-semibold"
+                  className="rounded-lg border border-border px-3 py-2 text-sm font-semibold"
                 >
                   Cancel
                 </button>
@@ -806,7 +806,7 @@ export function RoomsAdmin() {
         <Card>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-slate-500">
+              <thead className="text-muted-foreground">
                 <tr>
                   <th className="py-2">Code</th>
                   <th>Name</th>
@@ -819,13 +819,13 @@ export function RoomsAdmin() {
               </thead>
               <tbody>
                 {(rooms ?? []).map((room) => (
-                  <tr key={room._id} className="border-t border-blue-100">
+                  <tr key={room._id} className="border-t border-border">
                     <td className="py-3 font-medium">{room.code}</td>
                     <td>
                       <div>
                         <p className="font-medium">{room.name}</p>
                         {room.description ? (
-                          <p className="max-w-xs truncate text-xs text-slate-500">
+                          <p className="max-w-xs truncate text-xs text-muted-foreground">
                             {room.description}
                           </p>
                         ) : null}
@@ -843,7 +843,7 @@ export function RoomsAdmin() {
                       <button
                         type="button"
                         onClick={() => setEditingId(room._id)}
-                        className="rounded-lg border border-blue-100 px-2 py-1 text-xs"
+                        className="rounded-lg border border-border px-2 py-1 text-xs"
                       >
                         Edit
                       </button>
@@ -867,7 +867,7 @@ export function RoomsAdmin() {
             </table>
 
             {rooms?.length === 0 ? (
-              <p className="py-4 text-sm text-slate-500">
+              <p className="py-4 text-sm text-muted-foreground">
                 No rooms configured yet. Add room types first, then create
                 physical rooms such as PH900, PH901 or Ward 1.
               </p>
@@ -927,7 +927,7 @@ export function RequestFormAdmin() {
                 },
               ])
             }
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
           >
             <Plus className="size-4" />
             Add field
@@ -938,10 +938,10 @@ export function RequestFormAdmin() {
       <AdminMenu />
 
       <Card>
-        <div className="flex flex-col gap-3 border-b border-blue-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-semibold">Standard fields</h2>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               These are required by SimHub and cannot be removed.
             </p>
           </div>
@@ -959,11 +959,11 @@ export function RequestFormAdmin() {
           {standardFields.map((field) => (
             <div
               key={field.label}
-              className="flex items-center justify-between rounded-xl border border-blue-100 bg-white/60 p-3"
+              className="flex items-center justify-between rounded-xl border border-border bg-muted/40 p-3"
             >
               <div>
                 <p className="font-medium">{field.label}</p>
-                <p className="text-sm text-slate-500">{field.type} · locked</p>
+                <p className="text-sm text-muted-foreground">{field.type} · locked</p>
               </div>
               <StatusPill status={field.required ? "Required" : "Optional"} />
             </div>
@@ -976,7 +976,7 @@ export function RequestFormAdmin() {
           <h2 className="font-semibold">Custom fields</h2>
           <button
             onClick={save}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
           >
             <Save className="size-4" />
             Save form
@@ -987,7 +987,7 @@ export function RequestFormAdmin() {
           {activeFields.map((field, index) => (
             <div
               key={field.id}
-              className="grid gap-2 rounded-xl border border-blue-100 bg-white/60 p-3 md:grid-cols-[1fr_160px_100px_auto]"
+              className="grid gap-2 rounded-xl border border-border bg-muted/40 p-3 md:grid-cols-[1fr_160px_100px_auto]"
             >
               <input
                 value={field.label}
@@ -1000,7 +1000,7 @@ export function RequestFormAdmin() {
                     )
                   )
                 }
-                className="rounded-lg border border-blue-100 px-3 py-2 text-sm"
+                className="rounded-lg border border-border px-3 py-2 text-sm"
               />
 
               <select
@@ -1017,7 +1017,7 @@ export function RequestFormAdmin() {
                     )
                   )
                 }
-                className="rounded-lg border border-blue-100 px-3 py-2 text-sm"
+                className="rounded-lg border border-border px-3 py-2 text-sm"
               >
                 {fieldTypes.map((type) => (
                   <option key={type}>{type}</option>
@@ -1067,7 +1067,7 @@ export function RequestFormAdmin() {
                   )
                 }
                 placeholder="Help text"
-                className="rounded-lg border border-blue-100 px-3 py-2 text-sm md:col-span-2"
+                className="rounded-lg border border-border px-3 py-2 text-sm md:col-span-2"
               />
 
               <input
@@ -1085,13 +1085,13 @@ export function RequestFormAdmin() {
                   )
                 }
                 placeholder="Options for select/radio/checkbox, comma separated"
-                className="rounded-lg border border-blue-100 px-3 py-2 text-sm md:col-span-2"
+                className="rounded-lg border border-border px-3 py-2 text-sm md:col-span-2"
               />
             </div>
           ))}
 
           {activeFields.length === 0 ? (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               No custom request fields configured yet.
             </p>
           ) : null}
@@ -1141,7 +1141,7 @@ export function AccountsAdmin() {
           </h2>
 
           {editingDeveloper ? (
-            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-slate-700">
+            <div className="mt-4 rounded-xl border border-border bg-muted px-3 py-2 text-sm text-foreground">
               Developer users are managed by bootstrap tooling.
             </div>
           ) : (
@@ -1155,7 +1155,7 @@ export function AccountsAdmin() {
                 defaultValue={editing?.name}
                 placeholder="Name"
                 required
-                className="rounded-xl border border-blue-100 px-3 py-2"
+                className="rounded-xl border border-border px-3 py-2"
               />
 
               <input
@@ -1164,20 +1164,20 @@ export function AccountsAdmin() {
                 defaultValue={editing?.email}
                 placeholder="Email"
                 required
-                className="rounded-xl border border-blue-100 px-3 py-2"
+                className="rounded-xl border border-border px-3 py-2"
               />
 
               <select
                 name="role"
                 defaultValue={editing?.role ?? "Staff"}
-                className="rounded-xl border border-blue-100 px-3 py-2"
+                className="rounded-xl border border-border px-3 py-2"
               >
                 {roles.map((role) => (
                   <option key={role}>{role}</option>
                 ))}
               </select>
 
-              <button className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">
+              <button className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">
                 {editing ? "Save user" : "Add user"}
               </button>
             </form>
@@ -1188,11 +1188,11 @@ export function AccountsAdmin() {
           {(users ?? []).map((user) => (
             <div
               key={user._id}
-              className="flex items-center justify-between border-b border-blue-100 py-3 last:border-0"
+              className="flex items-center justify-between border-b border-border py-3 last:border-0"
             >
               <div>
                 <p className="font-medium">{user.name}</p>
-                <p className="text-sm text-slate-500">{user.email}</p>
+                <p className="text-sm text-muted-foreground">{user.email}</p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1201,7 +1201,7 @@ export function AccountsAdmin() {
                   <>
                     <button
                       onClick={() => setEditingId(user._id)}
-                      className="rounded-lg border border-blue-100 px-2 py-1 text-xs"
+                      className="rounded-lg border border-border px-2 py-1 text-xs"
                     >
                       Edit
                     </button>
@@ -1224,7 +1224,7 @@ export function AccountsAdmin() {
           ))}
 
           {users?.length === 0 ? (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               No users configured in Convex yet.
             </p>
           ) : null}

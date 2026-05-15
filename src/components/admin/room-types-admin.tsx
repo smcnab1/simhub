@@ -428,7 +428,7 @@ export function RoomTypesAdmin() {
                             {rt.name}
                           </span>
                           {rt.isSpecial && (
-                            <Badge variant="outline" className="text-[10px] py-0 bg-violet-50 text-violet-700 border-violet-200">
+                            <Badge variant="outline" className="text-[10px] py-0 bg-primary/10 text-primary border-border">
                               Special
                             </Badge>
                           )}

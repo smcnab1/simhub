@@ -323,7 +323,7 @@ export function RequestFormAdmin() {
             >
               {saved ? (
                 <>
-                  <CheckCircle2Icon className="size-3.5 text-green-400" data-icon="inline-start" />
+                  <CheckCircle2Icon className="size-3.5 text-primary" data-icon="inline-start" />
                   Saved
                 </>
               ) : (

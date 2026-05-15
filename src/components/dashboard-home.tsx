@@ -22,8 +22,8 @@ export function DashboardHome() {
         <Metric label="Blocked times" value={String(summary?.conflicts ?? 0)} detail="Calendar holds" />
       </div>
       <div className="mt-6 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-950">Recent requests</h2>
-        <a href="/dashboard/resource-calendar" className="rounded-lg border border-blue-100 bg-white/80 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-blue-50">Open calendar</a>
+        <h2 className="text-lg font-bold text-foreground">Recent requests</h2>
+        <a href="/dashboard/resource-calendar" className="rounded-lg border border-border bg-card/80 px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted">Open calendar</a>
       </div>
       <div className="mt-6 grid gap-3">
         {(requests ?? []).map((request) => (
@@ -39,7 +39,7 @@ export function DashboardHome() {
             }}
           />
         ))}
-        {requests?.length === 0 ? <p className="rounded-2xl border border-dashed border-blue-100 bg-white/70 p-5 text-sm text-slate-500">No booking requests in Convex yet.</p> : null}
+        {requests?.length === 0 ? <p className="rounded-2xl border border-dashed border-border bg-card/80 p-5 text-sm text-muted-foreground">No booking requests in Convex yet.</p> : null}
       </div>
     </>
   );
