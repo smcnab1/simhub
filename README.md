@@ -91,6 +91,78 @@ Older data with `isSpecial` or `maxDurationHours` is still read. Run the
 `tenants.backfillRoomTypeManagementFields` Convex mutation per tenant to copy
 legacy values into the canonical fields and clear the legacy fields.
 
+## Availability Conflict Warnings
+
+Requester-side availability checks are advisory. The public booking form calls
+the tenant-scoped `bookings.checkRequestAvailability` query after the requester
+has selected room quantities and a complete date/time range. The query returns
+structured conflict metadata with `informational`, `warning`, or
+`likely_unavailable` severity. Warnings are shown inline, but requesters can
+still submit pending requests unless an impossible business rule is violated,
+such as invalid time ranges or a room type max-duration rule.
+
+The reusable conflict engine lives in `src/lib/booking-logic.ts` and is reused
+by Convex queries and mutations. It checks approved bookings, pending bookings
+as lower-severity pressure, blocked periods, exact room clashes, campus/site
+blocks, and room type exhaustion. Cancelled and declined bookings are ignored.
+Datetime comparison is done from ISO strings with `Date.parse`, so overlap
+checks compare instants rather than local display text.
+
+`bookings.createRequest` recomputes availability on the server and stores
+`conflictMetadata` on the request for admin review. Admin request detail pages
+also recompute current conflicts while excluding the request itself, so stale
+requests can be assessed against the latest approved bookings, pending
+requests, and blocked times. Approval remains an admin decision and is not
+blocked by advisory availability warnings.
+
+## Room Request Modes
+
+Booking requests support two requester selection modes using the existing
+`bookingRequests` fields:
+
+- `SpecificRooms`: `requestedRoomIds` contains the exact active rooms the
+  requester asked for, and `roomTypeRequests` is empty.
+- `RoomTypeQuantity`: `roomTypeRequests` contains room type plus quantity pairs,
+  and `requestedRoomIds` is empty.
+
+The requester form exposes both modes with a segmented control. Specific room
+mode shows active rooms only, with room code, type, campus, and capacity.
+Room type quantity mode shows active room types only, with active room counts,
+descriptions, default capacity guidance, and quantity controls. The form shows
+estimated capacity totals for either mode.
+
+Convex validates the mode-specific state before insertion via shared
+`validateRoomSelectionState` logic and server-side tenant checks. Mixed states
+are rejected, inactive rooms/types are not accepted for new requests, and
+historic requests still render from assigned rooms, requested rooms, or stored
+room type request details.
+
+## Requester Submission Lifecycle
+
+The public `/book` flow does not require staff/admin access. Guests and signed
+in requesters submit through the same `bookings.createRequest` mutation, scoped
+by `tenantSlug`. The mutation validates requester contact fields, required
+tenant-configured custom fields, room selection state, active room/type/campus
+availability, and setup/session/cleanup chronology before creating a `Pending`
+request and notification.
+
+Time is stored as three booking blocks: `Setup`, `Session`, and `Cleanup`, each
+with its own start/end. Availability checks use the total occupied window from
+setup start through cleanup end, so staff see conflicts for the complete period
+that rooms are unavailable.
+
+Guest ownership is email-based. `requesterEmail` is normalized and stored on
+the request. If a matching tenant user already exists, `requesterUserId` is set
+at submission time. Signed-in requester views can use `bookings.listMyRequests`,
+which returns requests linked by `requesterUserId` or by matching email, so
+requests made before account creation can still appear after the account is
+linked with the same email address.
+
+Public tracking uses booking reference plus requester email through
+`bookings.getPublicRequestByReference`. The tracking URL can include
+`?email=...` after submission; otherwise the tracking page asks for the email
+before showing requester-visible request details.
+
 ## Local Bootstrap and Seeding
 
 For a first local setup, add your WorkOS email to `.env.local` so the seeded
