@@ -61,6 +61,22 @@ export function bookingDurationMinutes(blocks: BookingRange[]) {
   return Math.ceil((latestEnd - earliestStart) / 60000);
 }
 
+export function formatBookingDuration(minutes: number) {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  const hourLabel = `${hours} hr${hours === 1 ? "" : "s"}`;
+
+  if (remainingMinutes === 0) {
+    return hourLabel;
+  }
+
+  return `${hourLabel} ${remainingMinutes} min`;
+}
+
 export function validateMaxBookingDuration(
   blocks: BookingRange[],
   roomTypeRequests: RoomTypeRequest[],
@@ -89,7 +105,13 @@ export function validateMaxBookingDuration(
     return null;
   }
 
-  return `${breachedRule.name} bookings cannot exceed ${breachedRule.maxBookingDurationMinutes} minutes.`;
+  const maxBookingDurationMinutes = breachedRule.maxBookingDurationMinutes;
+
+  if (maxBookingDurationMinutes === undefined) {
+    return null;
+  }
+
+  return `${breachedRule.name} bookings cannot exceed ${formatBookingDuration(maxBookingDurationMinutes)}.`;
 }
 
 export function allocateRoomsByType(

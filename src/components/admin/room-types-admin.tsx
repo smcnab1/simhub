@@ -59,6 +59,7 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatBookingDuration } from "@/lib/booking-logic";
 
 type RoomTypeWithCounts = {
   _id: Id<"roomTypes">;
@@ -143,9 +144,14 @@ function RoomTypeFormDialog({
   const [defaultCapacity, setDefaultCapacity] = useState(
     String(editing?.defaultCapacity ?? 1)
   );
-  const [maxDuration, setMaxDuration] = useState(
+  const [maxDurationHours, setMaxDurationHours] = useState(
     editing?.maxBookingDurationMinutes != null
-      ? String(editing.maxBookingDurationMinutes)
+      ? String(Math.floor(editing.maxBookingDurationMinutes / 60))
+      : ""
+  );
+  const [maxDurationMinutes, setMaxDurationMinutes] = useState(
+    editing?.maxBookingDurationMinutes != null
+      ? String(editing.maxBookingDurationMinutes % 60)
       : ""
   );
   const [specialRoom, setSpecialRoom] = useState(editing?.specialRoom ?? false);
@@ -155,11 +161,22 @@ function RoomTypeFormDialog({
   );
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const selectedCampus = campuses.find((campus) => campus._id === campusId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const parsedCapacity = Number(defaultCapacity);
-    const parsedMaxDuration = maxDuration ? Number(maxDuration) : undefined;
+    const hasMaxDuration =
+      maxDurationHours.trim() !== "" || maxDurationMinutes.trim() !== "";
+    const parsedMaxDurationHours = maxDurationHours
+      ? Number(maxDurationHours)
+      : 0;
+    const parsedMaxDurationMinutes = maxDurationMinutes
+      ? Number(maxDurationMinutes)
+      : 0;
+    const parsedMaxDuration = hasMaxDuration
+      ? parsedMaxDurationHours * 60 + parsedMaxDurationMinutes
+      : undefined;
     const parsedSortOrder = sortOrder ? Number(sortOrder) : undefined;
 
     if (!name.trim()) {
@@ -173,10 +190,16 @@ function RoomTypeFormDialog({
     }
 
     if (
-      parsedMaxDuration !== undefined &&
-      (!Number.isInteger(parsedMaxDuration) || parsedMaxDuration <= 0)
+      hasMaxDuration &&
+      (!Number.isInteger(parsedMaxDurationHours) ||
+        parsedMaxDurationHours < 0 ||
+        !Number.isInteger(parsedMaxDurationMinutes) ||
+        parsedMaxDurationMinutes < 0 ||
+        parsedMaxDurationMinutes > 59 ||
+        parsedMaxDuration === undefined ||
+        parsedMaxDuration <= 0)
     ) {
-      setFormError("Maximum booking duration must be a whole number greater than zero.");
+      setFormError("Maximum booking duration must be whole hours and minutes greater than zero.");
       return;
     }
 
@@ -220,12 +243,16 @@ function RoomTypeFormDialog({
             <Label htmlFor="rt-campus">Campus (optional)</Label>
             <Select value={campusId} onValueChange={(v) => setCampusId(v ?? "")}>
               <SelectTrigger id="rt-campus">
-                <SelectValue placeholder="All campuses / no specific campus" />
+                <SelectValue>
+                  {selectedCampus?.name ?? "All campuses"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All campuses</SelectItem>
+                <SelectItem value="" label="All campuses">
+                  All campuses
+                </SelectItem>
                 {campuses.map((c) => (
-                  <SelectItem key={c._id} value={c._id}>
+                  <SelectItem key={c._id} value={c._id} label={c.name}>
                     {c.name}
                   </SelectItem>
                 ))}
@@ -256,7 +283,7 @@ function RoomTypeFormDialog({
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_2fr_1fr]">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rt-capacity">Default capacity</Label>
               <Input
@@ -268,15 +295,34 @@ function RoomTypeFormDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="rt-duration">Max minutes</Label>
-              <Input
-                id="rt-duration"
-                type="number"
-                min={1}
-                value={maxDuration}
-                onChange={(e) => setMaxDuration(e.target.value)}
-                placeholder="No limit"
-              />
+              <Label htmlFor="rt-duration-hours">Max duration</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-1.5 rounded-lg border border-input px-2.5 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+                  <Input
+                    id="rt-duration-hours"
+                    type="number"
+                    min={0}
+                    value={maxDurationHours}
+                    onChange={(e) => setMaxDurationHours(e.target.value)}
+                    placeholder="0"
+                    className="h-7 border-0 px-0 shadow-none focus-visible:ring-0"
+                  />
+                  <span className="text-xs text-muted-foreground">hr</span>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg border border-input px-2.5 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+                  <Input
+                    id="rt-duration-minutes"
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={maxDurationMinutes}
+                    onChange={(e) => setMaxDurationMinutes(e.target.value)}
+                    placeholder="0"
+                    className="h-7 border-0 px-0 shadow-none focus-visible:ring-0"
+                  />
+                  <span className="text-xs text-muted-foreground">min</span>
+                </div>
+              </div>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rt-sort">Sort order</Label>
@@ -564,7 +610,7 @@ export function RoomTypesAdmin() {
                       {rt.maxBookingDurationMinutes ? (
                         <div className="flex items-center gap-1">
                           <ClockIcon className="size-3 text-muted-foreground/50" />
-                          {rt.maxBookingDurationMinutes} min
+                          {formatBookingDuration(rt.maxBookingDurationMinutes)}
                         </div>
                       ) : (
                         <span className="text-border/70 italic">No limit</span>

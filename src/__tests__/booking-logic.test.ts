@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateRoomsByType,
   bookingDurationMinutes,
+  formatBookingDuration,
   hasBookingConflict,
   rangesOverlap,
   validateMaxBookingDuration,
@@ -74,6 +75,12 @@ describe("booking overlap logic", () => {
 });
 
 describe("booking duration rules", () => {
+  it("formats booking durations in hours and minutes", () => {
+    expect(formatBookingDuration(45)).toBe("45 min");
+    expect(formatBookingDuration(60)).toBe("1 hr");
+    expect(formatBookingDuration(150)).toBe("2 hrs 30 min");
+  });
+
   it("calculates total booking span in minutes", () => {
     expect(
       bookingDurationMinutes([
@@ -90,7 +97,7 @@ describe("booking duration rules", () => {
         [{ roomTypeId: "ward", quantity: 1 }],
         [{ id: "ward", name: "Ward", maxBookingDurationMinutes: 120 }]
       )
-    ).toBe("Ward bookings cannot exceed 120 minutes.");
+    ).toBe("Ward bookings cannot exceed 2 hrs.");
   });
 
   it("allows bookings within the selected room type duration rule", () => {

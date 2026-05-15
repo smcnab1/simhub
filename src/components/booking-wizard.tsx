@@ -7,6 +7,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Card, SectionHeader, formFieldClass, primaryButtonClass, subtleButtonClass } from "@/components/ui";
+import { formatBookingDuration } from "@/lib/booking-logic";
 import { TENANT_SLUG } from "@/lib/config";
 
 function value(form: HTMLFormElement, name: string) {
@@ -164,7 +165,7 @@ export function BookingWizard() {
                   </div>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">
-                  {room.maxBookingDurationMinutes ? `Max ${room.maxBookingDurationMinutes} min` : "No max duration"}
+                  {room.maxBookingDurationMinutes ? `Max ${formatBookingDuration(room.maxBookingDurationMinutes)}` : "No max duration"}
                   {room.specialRoom ? " · special type" : ""}
                 </p>
               </label>

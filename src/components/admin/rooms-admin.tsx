@@ -260,6 +260,14 @@ function RoomFormDialog({
       ),
     [roomTypes, editing?.roomTypeId]
   );
+  const selectedRoomType = selectableRoomTypes.find((rt) => rt._id === roomTypeId);
+  const selectedCampus = campuses.find((campus) => campus._id === campusId);
+  const selectedRoomTypeLabel = selectedRoomType
+    ? `${selectedRoomType.name}${selectedRoomType.campus ? ` — ${selectedRoomType.campus.name}` : ""}${!selectedRoomType.active ? " (inactive)" : ""}`
+    : undefined;
+  const selectedCampusLabel = selectedCampus
+    ? `${selectedCampus.name}${selectedCampus.active === false ? " (inactive)" : ""}`
+    : "Use room type campus";
 
   useEffect(() => {
     return () => {
@@ -437,11 +445,17 @@ function RoomFormDialog({
             <Label htmlFor="room-type">Room type</Label>
             <Select value={roomTypeId} onValueChange={(v) => setRoomTypeId(v ?? "")} required>
               <SelectTrigger id="room-type">
-                <SelectValue placeholder="Select room type…" />
+                <SelectValue placeholder="Select room type…">
+                  {selectedRoomTypeLabel}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {selectableRoomTypes.map((rt) => (
-                  <SelectItem key={rt._id} value={rt._id}>
+                  <SelectItem
+                    key={rt._id}
+                    value={rt._id}
+                    label={`${rt.name}${rt.campus ? ` — ${rt.campus.name}` : ""}${!rt.active ? " (inactive)" : ""}`}
+                  >
                     {rt.name}
                     {rt.campus ? ` — ${rt.campus.name}` : ""}
                     {!rt.active ? " (inactive)" : ""}
@@ -455,12 +469,18 @@ function RoomFormDialog({
             <Label htmlFor="room-campus">Campus (optional)</Label>
             <Select value={campusId} onValueChange={(v) => setCampusId(v ?? "")}>
               <SelectTrigger id="room-campus">
-                <SelectValue placeholder="Use room type campus / no campus" />
+                <SelectValue>{selectedCampusLabel}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Use room type campus</SelectItem>
+                <SelectItem value="" label="Use room type campus">
+                  Use room type campus
+                </SelectItem>
                 {campuses.map((c) => (
-                  <SelectItem key={c._id} value={c._id}>
+                  <SelectItem
+                    key={c._id}
+                    value={c._id}
+                    label={`${c.name}${c.active === false ? " (inactive)" : ""}`}
+                  >
                     {c.name}
                     {c.active === false ? " (inactive)" : ""}
                   </SelectItem>
