@@ -67,6 +67,8 @@ type RoomTypeWithCounts = {
   description?: string;
   defaultCapacity: number;
   maxBookingDurationMinutes?: number;
+  standardSetupMinutes?: number;
+  standardCleanupMinutes?: number;
   specialRoom: boolean;
   active: boolean;
   sortOrder?: number;
@@ -125,6 +127,8 @@ interface RoomTypeFormDialogProps {
     description?: string;
     defaultCapacity: number;
     maxBookingDurationMinutes?: number;
+    standardSetupMinutes?: number;
+    standardCleanupMinutes?: number;
     specialRoom: boolean;
     active: boolean;
     sortOrder?: number;
@@ -154,6 +158,12 @@ function RoomTypeFormDialog({
       ? String(editing.maxBookingDurationMinutes % 60)
       : ""
   );
+  const [standardSetupMinutes, setStandardSetupMinutes] = useState(
+    String(editing?.standardSetupMinutes ?? 30)
+  );
+  const [standardCleanupMinutes, setStandardCleanupMinutes] = useState(
+    String(editing?.standardCleanupMinutes ?? 30)
+  );
   const [specialRoom, setSpecialRoom] = useState(editing?.specialRoom ?? false);
   const [active, setActive] = useState(editing?.active ?? true);
   const [sortOrder, setSortOrder] = useState(
@@ -178,6 +188,8 @@ function RoomTypeFormDialog({
       ? parsedMaxDurationHours * 60 + parsedMaxDurationMinutes
       : undefined;
     const parsedSortOrder = sortOrder ? Number(sortOrder) : undefined;
+    const parsedStandardSetupMinutes = Number(standardSetupMinutes);
+    const parsedStandardCleanupMinutes = Number(standardCleanupMinutes);
 
     if (!name.trim()) {
       setFormError("Room type name is required.");
@@ -208,6 +220,16 @@ function RoomTypeFormDialog({
       return;
     }
 
+    if (
+      !Number.isInteger(parsedStandardSetupMinutes) ||
+      parsedStandardSetupMinutes < 0 ||
+      !Number.isInteger(parsedStandardCleanupMinutes) ||
+      parsedStandardCleanupMinutes < 0
+    ) {
+      setFormError("Standard setup and cleanup must be whole minutes greater than or equal to zero.");
+      return;
+    }
+
     setSaving(true);
     setFormError(null);
     try {
@@ -217,6 +239,8 @@ function RoomTypeFormDialog({
         description: description.trim() || undefined,
         defaultCapacity: parsedCapacity,
         maxBookingDurationMinutes: parsedMaxDuration,
+        standardSetupMinutes: parsedStandardSetupMinutes,
+        standardCleanupMinutes: parsedStandardCleanupMinutes,
         specialRoom,
         active,
         sortOrder: parsedSortOrder,
@@ -334,6 +358,37 @@ function RoomTypeFormDialog({
                 onChange={(e) => setSortOrder(e.target.value)}
                 placeholder="Auto"
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="rt-setup">Standard setup</Label>
+              <div className="flex items-center gap-1.5 rounded-lg border border-input px-2.5 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+                <Input
+                  id="rt-setup"
+                  type="number"
+                  min={0}
+                  value={standardSetupMinutes}
+                  onChange={(e) => setStandardSetupMinutes(e.target.value)}
+                  className="h-7 border-0 px-0 shadow-none focus-visible:ring-0"
+                />
+                <span className="text-xs text-muted-foreground">min</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="rt-cleanup">Standard cleanup</Label>
+              <div className="flex items-center gap-1.5 rounded-lg border border-input px-2.5 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+                <Input
+                  id="rt-cleanup"
+                  type="number"
+                  min={0}
+                  value={standardCleanupMinutes}
+                  onChange={(e) => setStandardCleanupMinutes(e.target.value)}
+                  className="h-7 border-0 px-0 shadow-none focus-visible:ring-0"
+                />
+                <span className="text-xs text-muted-foreground">min</span>
+              </div>
             </div>
           </div>
 
@@ -557,6 +612,7 @@ export function RoomTypesAdmin() {
                   <TableHead>Rooms</TableHead>
                   <TableHead>Capacity</TableHead>
                   <TableHead>Max duration</TableHead>
+                  <TableHead>Buffers</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="pr-6 text-right">Actions</TableHead>
                 </TableRow>
@@ -615,6 +671,12 @@ export function RoomTypesAdmin() {
                       ) : (
                         <span className="text-border/70 italic">No limit</span>
                       )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <ClockIcon className="size-3 text-muted-foreground/50" />
+                        {rt.standardSetupMinutes ?? 30}+{rt.standardCleanupMinutes ?? 30} min
+                      </div>
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={rt.active ? "Active" : "Inactive"} />

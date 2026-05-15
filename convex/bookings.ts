@@ -8,7 +8,11 @@ import {
   allocateRoomsByType,
   checkAvailabilityConflicts,
   hasBookingConflict,
+  bookingBlocksFromSessionWindow,
+  roomTypeBufferMinutes,
   validateBookingBlocks,
+  validateBookingWithinStaffHours,
+  validateSessionWithinOpeningHours,
   validateRoomSelectionState,
   validateMaxBookingDuration,
   type AvailabilityCheckResult,
@@ -57,7 +61,36 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-function formatRequestWindow(blocks: Array<{ start: string; end: string }>) {
+function formatDateTimeForNotification(value: string, timezone: string) {
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: timezone,
+  }).format(date);
+}
+
+function formatTimeForNotification(value: string, timezone: string) {
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: timezone,
+  }).format(date);
+}
+
+function formatRequestWindow(blocks: Array<{ start: string; end: string }>, timezone: string) {
   const starts = blocks.map((block) => Date.parse(block.start));
   const ends = blocks.map((block) => Date.parse(block.end));
   const earliestStart = Math.min(...starts);
@@ -67,7 +100,7 @@ function formatRequestWindow(blocks: Array<{ start: string; end: string }>) {
     return "invalid requested time";
   }
 
-  return `${new Date(earliestStart).toISOString()} to ${new Date(latestEnd).toISOString()}`;
+  return `${formatDateTimeForNotification(new Date(earliestStart).toISOString(), timezone)} to ${formatTimeForNotification(new Date(latestEnd).toISOString(), timezone)}`;
 }
 
 async function requesterUserByEmail(
@@ -174,6 +207,8 @@ function publicRoomType(roomType: Doc<"roomTypes">) {
       (roomType.maxDurationHours !== undefined
         ? roomType.maxDurationHours * 60
         : undefined),
+    standardSetupMinutes: roomType.standardSetupMinutes ?? 30,
+    standardCleanupMinutes: roomType.standardCleanupMinutes ?? 30,
   };
 }
 
@@ -332,6 +367,8 @@ async function validateSpecificRoomRequests(
           (roomType.maxDurationHours !== undefined
             ? roomType.maxDurationHours * 60
             : undefined),
+        standardSetupMinutes: roomType.standardSetupMinutes ?? 30,
+        standardCleanupMinutes: roomType.standardCleanupMinutes ?? 30,
       };
     })
   );
@@ -384,6 +421,90 @@ async function validateRequesterRoomSelection(
     tenantId,
     args.blocks,
     args.roomTypeRequests
+  );
+}
+
+async function roomTypeRequestsForSelection(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  args: {
+    roomSelectionMode: "SpecificRooms" | "RoomTypeQuantity";
+    requestedRoomIds?: Id<"rooms">[];
+    roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>;
+  }
+) {
+  if (args.roomSelectionMode === "RoomTypeQuantity") {
+    return args.roomTypeRequests;
+  }
+
+  const requestedRooms = await Promise.all(
+    (args.requestedRoomIds ?? []).map((roomId) => ctx.db.get(roomId))
+  );
+  const counts = new Map<Id<"roomTypes">, number>();
+
+  for (const room of requestedRooms) {
+    if (!room || room.tenantId !== tenantId) continue;
+    counts.set(room.roomTypeId, (counts.get(room.roomTypeId) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries()).map(([roomTypeId, quantity]) => ({
+    roomTypeId,
+    quantity,
+  }));
+}
+
+async function roomTypeRulesForRequests(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>
+) {
+  return (
+    await Promise.all(
+      roomTypeRequests.map(async (request) => {
+        const roomType = await ctx.db.get(request.roomTypeId);
+
+        if (!roomType || roomType.tenantId !== tenantId) return null;
+
+        return {
+          id: roomType._id,
+          name: roomType.name,
+          maxBookingDurationMinutes:
+            roomType.maxBookingDurationMinutes ??
+            (roomType.maxDurationHours !== undefined
+              ? roomType.maxDurationHours * 60
+              : undefined),
+          standardSetupMinutes: roomType.standardSetupMinutes ?? 30,
+          standardCleanupMinutes: roomType.standardCleanupMinutes ?? 30,
+        };
+      })
+    )
+  ).filter((roomType): roomType is NonNullable<typeof roomType> => roomType !== null);
+}
+
+async function deriveBufferedBlocks(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  args: {
+    roomSelectionMode: "SpecificRooms" | "RoomTypeQuantity";
+    requestedRoomIds?: Id<"rooms">[];
+    roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>;
+    blocks: Array<{ label: "Setup" | "Session" | "Cleanup"; start: string; end: string }>;
+  }
+) {
+  const sessionBlock = args.blocks.find((block) => block.label === "Session");
+
+  if (!sessionBlock) {
+    throw new Error("Session start and finish are required.");
+  }
+
+  const effectiveRoomTypeRequests = await roomTypeRequestsForSelection(ctx, tenantId, args);
+  const roomTypes = await roomTypeRulesForRequests(ctx, tenantId, effectiveRoomTypeRequests);
+  const buffers = roomTypeBufferMinutes(effectiveRoomTypeRequests, roomTypes);
+
+  return bookingBlocksFromSessionWindow(
+    sessionBlock.start,
+    sessionBlock.end,
+    buffers
   );
 }
 
@@ -658,8 +779,19 @@ export const checkRequestAvailability = query({
       };
     }
 
+    const blocks = await deriveBufferedBlocks(ctx, tenant._id, {
+      roomSelectionMode: args.roomSelectionMode ?? "RoomTypeQuantity",
+      requestedRoomIds: args.requestedRoomIds,
+      roomTypeRequests: args.roomTypeRequests,
+      blocks: args.blocks.map((block) => ({
+        label: "Session" as const,
+        start: block.start,
+        end: block.end,
+      })),
+    });
+
     return await computeAvailability(ctx, tenant._id, {
-      blocks: args.blocks,
+      blocks,
       roomTypeRequests: args.roomTypeRequests,
       requestedRoomIds: args.requestedRoomIds,
       roomSelectionMode: args.roomSelectionMode ?? "RoomTypeQuantity",
@@ -696,22 +828,53 @@ export const createRequest = mutation({
       throw new Error(requesterError);
     }
 
-    const blockError = validateBookingBlocks(args.blocks);
-    if (blockError) {
-      throw new Error(blockError);
-    }
-
-    await validateCustomInputs(ctx, tenant._id, args.customInputs);
-
     await validateRequesterRoomSelection(ctx, tenant._id, {
       roomSelectionMode: args.roomSelectionMode,
       blocks: args.blocks,
       requestedRoomIds: args.requestedRoomIds,
       roomTypeRequests: args.roomTypeRequests,
     });
+
+    const blocks = await deriveBufferedBlocks(ctx, tenant._id, {
+      roomSelectionMode: args.roomSelectionMode,
+      requestedRoomIds: args.requestedRoomIds,
+      roomTypeRequests: args.roomTypeRequests,
+      blocks: args.blocks,
+    });
+
+    const blockError = validateBookingBlocks(blocks);
+    if (blockError) {
+      throw new Error(blockError);
+    }
+
+    const openingHoursError = validateSessionWithinOpeningHours(
+      blocks.find((block) => block.label === "Session") ?? blocks[1],
+      tenant.hoursOfOperation,
+      tenant.timezone
+    );
+
+    if (openingHoursError) {
+      throw new Error(openingHoursError);
+    }
+
+    const staffHoursError = validateBookingWithinStaffHours(
+      {
+        start: blocks[0].start,
+        end: blocks[blocks.length - 1].end,
+      },
+      tenant.hoursOfOperation,
+      tenant.timezone
+    );
+
+    if (staffHoursError) {
+      throw new Error(staffHoursError);
+    }
+
+    await validateCustomInputs(ctx, tenant._id, args.customInputs);
+
     const conflictMetadata = await computeAvailability(ctx, tenant._id, {
       roomSelectionMode: args.roomSelectionMode,
-      blocks: args.blocks,
+      blocks,
       roomTypeRequests: args.roomTypeRequests,
       requestedRoomIds: args.requestedRoomIds,
     });
@@ -734,7 +897,7 @@ export const createRequest = mutation({
       details: args.details.trim(),
       ccEmails: normalizedCcEmails,
       timezone: args.timezone,
-      blocks: args.blocks,
+      blocks,
       roomSelectionMode: args.roomSelectionMode,
       requestedRoomIds: args.roomSelectionMode === "SpecificRooms" ? args.requestedRoomIds : undefined,
       roomTypeRequests: args.roomTypeRequests,
@@ -753,7 +916,7 @@ export const createRequest = mutation({
       message: [
         `New pending request: ${args.sessionName.trim()}`,
         `Requester: ${args.requesterName.trim()} <${normalizedRequesterEmail}>`,
-        `When: ${formatRequestWindow(args.blocks)}`,
+        `When: ${formatRequestWindow(blocks, tenant.timezone)}`,
         `Reference: ${requestId}`,
         conflictMetadata.conflicts.length
           ? `Availability warnings: ${conflictMetadata.conflicts.length}`

@@ -10,7 +10,7 @@ import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import { formFieldClass, primaryButtonClass } from "@/components/ui";
-import { formatRooms } from "@/lib/format";
+import { formatBlockTime, formatRooms } from "@/lib/format";
 import { TENANT_SLUG } from "@/lib/config";
 
 function severityLabel(severity: string) {
@@ -126,7 +126,7 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
             </div>
             <p className="mt-4 rounded-xl bg-card/80 p-3 text-sm text-foreground">{request.details}</p>
             <div className="mt-4 grid gap-2">
-              {request.blocks.map((block) => <p key={`${block.label}-${block.start}`} className="rounded-xl bg-muted p-3 text-sm">{block.label}: {block.start} to {block.end}</p>)}
+              {request.blocks.map((block) => <p key={`${block.label}-${block.start}`} className="rounded-xl bg-muted p-3 text-sm">{block.label}: {formatBlockTime(block, request.timezone)}</p>)}
             </div>
           </Card>
           <Card>

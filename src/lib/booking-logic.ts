@@ -38,6 +38,8 @@ export type RoomTypeBookingRule = {
   id: string;
   name: string;
   maxBookingDurationMinutes?: number;
+  standardSetupMinutes?: number;
+  standardCleanupMinutes?: number;
 };
 
 export type AssignedBooking = {
@@ -188,6 +190,258 @@ export function validateBookingBlocks(blocks: BookingBlock[]) {
   return null;
 }
 
+export function sessionBlocksOnly(blocks: BookingRange[]) {
+  return blocks.filter(
+    (block): block is BookingBlock =>
+      "label" in block && block.label === "Session"
+  );
+}
+
+export function roomTypeBufferMinutes(
+  roomTypeRequests: RoomTypeRequest[],
+  roomTypes: RoomTypeBookingRule[]
+) {
+  const selectedTypeIds = new Set(
+    roomTypeRequests
+      .filter((request) => request.quantity > 0)
+      .map((request) => request.roomTypeId)
+  );
+  const selectedRoomTypes = roomTypes.filter((roomType) =>
+    selectedTypeIds.has(roomType.id)
+  );
+
+  return {
+    setupMinutes: Math.max(
+      30,
+      ...selectedRoomTypes.map((roomType) => roomType.standardSetupMinutes ?? 30)
+    ),
+    cleanupMinutes: Math.max(
+      30,
+      ...selectedRoomTypes.map((roomType) => roomType.standardCleanupMinutes ?? 30)
+    ),
+  };
+}
+
+export function bookingBlocksFromSessionWindow(
+  sessionStart: string,
+  sessionEnd: string,
+  buffers: { setupMinutes: number; cleanupMinutes: number }
+): BookingBlock[] {
+  const sessionStartMs = Date.parse(sessionStart);
+  const sessionEndMs = Date.parse(sessionEnd);
+
+  return [
+    {
+      label: "Setup",
+      start: Number.isFinite(sessionStartMs)
+        ? new Date(sessionStartMs - buffers.setupMinutes * 60000).toISOString()
+        : sessionStart,
+      end: sessionStart,
+    },
+    {
+      label: "Session",
+      start: sessionStart,
+      end: sessionEnd,
+    },
+    {
+      label: "Cleanup",
+      start: sessionEnd,
+      end: Number.isFinite(sessionEndMs)
+        ? new Date(sessionEndMs + buffers.cleanupMinutes * 60000).toISOString()
+        : sessionEnd,
+    },
+  ];
+}
+
+function dayNameForDate(date: Date, timezone: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    timeZone: timezone,
+  }).format(date);
+}
+
+function timeMinutesForDate(date: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: timezone,
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value);
+
+  return hour * 60 + minute;
+}
+
+function parseHoursOfOperation(hoursOfOperation: string) {
+  const hoursByDay = new Map<string, {
+    publicOpen: number;
+    publicClose: number;
+    staffOpen: number;
+    staffClose: number;
+    closed: boolean;
+  }>();
+  const dayAliases: Record<string, string[]> = {
+    "Mon-Fri": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+  };
+
+  for (const line of hoursOfOperation.split("\n")) {
+    const match = line.match(/^(\w+):\s*(.+)$/);
+    const rangeMatch = line.match(/^(Mon-Fri):\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/);
+
+    if (rangeMatch) {
+      const [, range, openHour, openMinute, closeHour, closeMinute] = rangeMatch;
+      for (const day of dayAliases[range] ?? []) {
+        const publicOpen = Number(openHour) * 60 + Number(openMinute);
+        const publicClose = Number(closeHour) * 60 + Number(closeMinute);
+        hoursByDay.set(day, {
+          publicOpen,
+          publicClose,
+          staffOpen: Math.max(0, publicOpen - 30),
+          staffClose: publicClose + 30,
+          closed: false,
+        });
+      }
+      continue;
+    }
+
+    if (!match) continue;
+
+    const [, day, value] = match;
+
+    if (value.trim().toLowerCase() === "closed") {
+      hoursByDay.set(day, {
+        publicOpen: 0,
+        publicClose: 0,
+        staffOpen: 0,
+        staffClose: 0,
+        closed: true,
+      });
+      continue;
+    }
+
+    const splitMatch = value.match(
+      /Public\s+(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2});\s*Staff\s+(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/i
+    );
+
+    if (splitMatch) {
+      const [
+        ,
+        publicOpenHour,
+        publicOpenMinute,
+        publicCloseHour,
+        publicCloseMinute,
+        staffOpenHour,
+        staffOpenMinute,
+        staffCloseHour,
+        staffCloseMinute,
+      ] = splitMatch;
+
+      hoursByDay.set(day, {
+        publicOpen: Number(publicOpenHour) * 60 + Number(publicOpenMinute),
+        publicClose: Number(publicCloseHour) * 60 + Number(publicCloseMinute),
+        staffOpen: Number(staffOpenHour) * 60 + Number(staffOpenMinute),
+        staffClose: Number(staffCloseHour) * 60 + Number(staffCloseMinute),
+        closed: false,
+      });
+      continue;
+    }
+
+    const timeMatch = value.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (!timeMatch) continue;
+
+    const [, openHour, openMinute, closeHour, closeMinute] = timeMatch;
+    const publicOpen = Number(openHour) * 60 + Number(openMinute);
+    const publicClose = Number(closeHour) * 60 + Number(closeMinute);
+
+    hoursByDay.set(day, {
+      publicOpen,
+      publicClose,
+      staffOpen: Math.max(0, publicOpen - 30),
+      staffClose: publicClose + 30,
+      closed: false,
+    });
+  }
+
+  return hoursByDay;
+}
+
+export function validateSessionWithinOpeningHours(
+  sessionBlock: BookingRange,
+  hoursOfOperation: string,
+  timezone: string
+) {
+  const start = new Date(sessionBlock.start);
+  const end = new Date(sessionBlock.end);
+
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    return "Session start and finish must be valid dates and times.";
+  }
+
+  const startDay = dayNameForDate(start, timezone);
+  const endDay = dayNameForDate(end, timezone);
+
+  if (startDay !== endDay) {
+    return "Session start and finish must be on the same opening day.";
+  }
+
+  const dayHours = parseHoursOfOperation(hoursOfOperation).get(startDay);
+
+  if (!dayHours) {
+    return null;
+  }
+
+  if (dayHours.closed) {
+    return `${startDay} is closed for bookings.`;
+  }
+
+  const startMinutes = timeMinutesForDate(start, timezone);
+  const endMinutes = timeMinutesForDate(end, timezone);
+
+  if (startMinutes < dayHours.publicOpen || endMinutes > dayHours.publicClose) {
+    return `Session time must be within ${startDay} opening hours.`;
+  }
+
+  return null;
+}
+
+export function validateBookingWithinStaffHours(
+  bookingWindow: BookingRange,
+  hoursOfOperation: string,
+  timezone: string
+) {
+  const start = new Date(bookingWindow.start);
+  const end = new Date(bookingWindow.end);
+
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    return "Booking window must be a valid date and time.";
+  }
+
+  const startDay = dayNameForDate(start, timezone);
+  const endDay = dayNameForDate(end, timezone);
+
+  if (startDay !== endDay) {
+    return "Setup, session, and cleanup must fit within one staff opening day.";
+  }
+
+  const dayHours = parseHoursOfOperation(hoursOfOperation).get(startDay);
+
+  if (!dayHours) return null;
+
+  if (dayHours.closed) {
+    return `${startDay} is closed for bookings.`;
+  }
+
+  const startMinutes = timeMinutesForDate(start, timezone);
+  const endMinutes = timeMinutesForDate(end, timezone);
+
+  if (startMinutes < dayHours.staffOpen || endMinutes > dayHours.staffClose) {
+    return `Setup and cleanup must fit within ${startDay} staff opening hours.`;
+  }
+
+  return null;
+}
+
 export function validateRoomSelectionState(selection: BookingRoomSelection) {
   const requestedRoomIds = selection.requestedRoomIds ?? [];
   const roomTypeRequests = selection.roomTypeRequests ?? [];
@@ -317,7 +571,10 @@ export function validateMaxBookingDuration(
   roomTypeRequests: RoomTypeRequest[],
   roomTypes: RoomTypeBookingRule[]
 ) {
-  const durationMinutes = bookingDurationMinutes(blocks);
+  const durationBlocks = sessionBlocksOnly(blocks);
+  const durationMinutes = bookingDurationMinutes(
+    durationBlocks.length ? durationBlocks : blocks
+  );
 
   if (durationMinutes === null) {
     return "Booking start and end times are invalid.";

@@ -50,6 +50,8 @@ function normalizeRoomType(roomType: Doc<"roomTypes">) {
   return {
     ...roomType,
     maxBookingDurationMinutes,
+    standardSetupMinutes: roomType.standardSetupMinutes ?? 30,
+    standardCleanupMinutes: roomType.standardCleanupMinutes ?? 30,
     specialRoom: roomType.specialRoom ?? roomType.isSpecial ?? false,
   };
 }
@@ -555,6 +557,8 @@ export const upsertRoomType = mutation({
     description: v.optional(v.string()),
     defaultCapacity: v.number(),
     maxBookingDurationMinutes: v.optional(v.number()),
+    standardSetupMinutes: v.optional(v.number()),
+    standardCleanupMinutes: v.optional(v.number()),
     specialRoom: v.boolean(),
     active: v.boolean(),
     sortOrder: v.optional(v.number()),
@@ -589,6 +593,18 @@ export const upsertRoomType = mutation({
       throw new Error("Maximum booking duration must be a whole number greater than zero");
     }
 
+    for (const [label, minutes] of [
+      ["Standard setup", args.standardSetupMinutes],
+      ["Standard cleanup", args.standardCleanupMinutes],
+    ] as const) {
+      if (
+        minutes !== undefined &&
+        (!Number.isInteger(minutes) || minutes < 0)
+      ) {
+        throw new Error(`${label} minutes must be a whole number greater than or equal to zero`);
+      }
+    }
+
     if (args.sortOrder !== undefined && !Number.isInteger(args.sortOrder)) {
       throw new Error("Sort order must be a whole number");
     }
@@ -616,6 +632,8 @@ export const upsertRoomType = mutation({
       description: args.description?.trim() || undefined,
       defaultCapacity: args.defaultCapacity,
       maxBookingDurationMinutes: args.maxBookingDurationMinutes,
+      standardSetupMinutes: args.standardSetupMinutes ?? 30,
+      standardCleanupMinutes: args.standardCleanupMinutes ?? 30,
       specialRoom: args.specialRoom,
       maxDurationHours: undefined,
       isSpecial: undefined,

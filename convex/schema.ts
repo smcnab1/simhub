@@ -63,6 +63,8 @@ export default defineSchema({
 
     // Optional rule for bookings of this room type.
     maxBookingDurationMinutes: v.optional(v.number()),
+    standardSetupMinutes: v.optional(v.number()),
+    standardCleanupMinutes: v.optional(v.number()),
     // Legacy field kept optional while existing data is backfilled.
     maxDurationHours: v.optional(v.number()),
 

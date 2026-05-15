@@ -6,7 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
 import { TENANT_SLUG } from "@/lib/config";
-import { formatRooms } from "@/lib/format";
+import { formatTimeRange, formatRooms } from "@/lib/format";
 
 const days = Array.from({ length: 31 }, (_, index) => index + 1);
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -74,7 +74,7 @@ export function PublicCalendar() {
                   <h3 className="font-semibold text-foreground">{event.sessionName}</h3>
                   <StatusPill status={event.status} />
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">{event.blocks.map((block) => `${block.label}: ${block.start.slice(11, 16)}-${block.end.slice(11, 16)}`).join(" · ")}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{event.blocks.map((block) => `${block.label}: ${formatTimeRange(block.start, block.end, event.timezone)}`).join(" · ")}</p>
                 <p className="mt-1 text-sm text-muted-foreground">{formatRooms(event)}</p>
               </div>
             )) : <p className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">{events === undefined ? "Loading calendar..." : "No public sessions for this day."}</p>}

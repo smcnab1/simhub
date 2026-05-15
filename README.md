@@ -129,7 +129,9 @@ The requester form exposes both modes with a segmented control. Specific room
 mode shows active rooms only, with room code, type, campus, and capacity.
 Room type quantity mode shows active room types only, with active room counts,
 descriptions, default capacity guidance, and quantity controls. The form shows
-estimated capacity totals for either mode.
+estimated capacity totals for either mode. Room types also carry standard setup
+and cleanup buffers, defaulting to 30 minutes each. Admins can adjust these per
+room type for more complex spaces.
 
 Convex validates the mode-specific state before insertion via shared
 `validateRoomSelectionState` logic and server-side tenant checks. Mixed states
@@ -143,13 +145,22 @@ The public `/book` flow does not require staff/admin access. Guests and signed
 in requesters submit through the same `bookings.createRequest` mutation, scoped
 by `tenantSlug`. The mutation validates requester contact fields, required
 tenant-configured custom fields, room selection state, active room/type/campus
-availability, and setup/session/cleanup chronology before creating a `Pending`
-request and notification.
+availability, session chronology, public opening hours, and staff
+setup/cleanup hours before creating a `Pending` request and notification.
 
 Time is stored as three booking blocks: `Setup`, `Session`, and `Cleanup`, each
-with its own start/end. Availability checks use the total occupied window from
-setup start through cleanup end, so staff see conflicts for the complete period
-that rooms are unavailable.
+with its own start/end. Requesters only enter the session date, start, and
+finish. Convex derives setup and cleanup automatically from the selected room
+type standards, using the largest setup/cleanup buffer when multiple types are
+selected. Availability checks use the total occupied window from setup start
+through cleanup end, so staff see conflicts for the complete period that rooms
+are unavailable. Maximum room type duration rules count the session block only,
+not the automatically-added setup or cleanup buffers.
+
+Facility hours support separate public and staff windows. Public opening hours
+control the requester-entered session start/finish. Staff hours control whether
+the derived setup and cleanup can fit around that session. The default is public
+09:00-17:00 and staff 08:30-17:30.
 
 Guest ownership is email-based. `requesterEmail` is normalized and stored on
 the request. If a matching tenant user already exists, `requesterUserId` is set

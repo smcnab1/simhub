@@ -2,13 +2,25 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, DoorOpen, Info, LoaderCircle, Search, Upload, Users } from "lucide-react";
+import { AlertTriangle, Check, Clock, DoorOpen, Info, LoaderCircle, Search, Upload, Users } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Card, SectionHeader, formFieldClass, primaryButtonClass, subtleButtonClass } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
-import { formatBookingDuration, validateBookingBlocks, validateRoomSelectionState, type BookingBlock, type RoomSelectionMode } from "@/lib/booking-logic";
+import { formatBlockTime } from "@/lib/format";
+import {
+  bookingBlocksFromSessionWindow,
+  formatBookingDuration,
+  roomTypeBufferMinutes,
+  validateBookingBlocks,
+  validateBookingWithinStaffHours,
+  validateRoomSelectionState,
+  validateSessionWithinOpeningHours,
+  type BookingBlock,
+  type RoomSelectionMode,
+  type RoomTypeRequest,
+} from "@/lib/booking-logic";
 import { TENANT_SLUG } from "@/lib/config";
 
 function value(form: HTMLFormElement, name: string) {
@@ -25,12 +37,8 @@ function iso(date: string, time: string) {
 
 type BookingTimeInputs = {
   date: string;
-  setupStart: string;
-  setupEnd: string;
   sessionStart: string;
   sessionEnd: string;
-  cleanupStart: string;
-  cleanupEnd: string;
 };
 
 function completeTimeInputs(inputs: BookingTimeInputs) {
@@ -117,12 +125,8 @@ export function BookingWizard() {
   const [selectionTouched, setSelectionTouched] = useState(false);
   const [timeInputs, setTimeInputs] = useState<BookingTimeInputs>({
     date: "",
-    setupStart: "",
-    setupEnd: "",
     sessionStart: "",
     sessionEnd: "",
-    cleanupStart: "",
-    cleanupEnd: "",
   });
   const [roomQuantities, setRoomQuantities] = useState<Record<string, number>>({});
   const roomTypes = useQuery(api.tenants.listRoomTypes, { tenantSlug: TENANT_SLUG, campusId: campusId || undefined });
@@ -142,6 +146,31 @@ export function BookingWizard() {
   const selectedSpecificRooms = useMemo(
     () => (rooms ?? []).filter((room) => requestedRoomIds.includes(room._id)),
     [requestedRoomIds, rooms]
+  );
+  const bufferRoomTypeRequests = useMemo<RoomTypeRequest[]>(
+    () =>
+      roomSelectionMode === "SpecificRooms"
+        ? Object.entries(
+            selectedSpecificRooms.reduce<Record<string, number>>((counts, room) => {
+              counts[room.roomTypeId] = (counts[room.roomTypeId] ?? 0) + 1;
+              return counts;
+            }, {})
+          ).map(([roomTypeId, quantity]) => ({ roomTypeId, quantity }))
+        : selectedRoomTypeRequests,
+    [roomSelectionMode, selectedRoomTypeRequests, selectedSpecificRooms]
+  );
+  const selectedBuffers = useMemo(
+    () =>
+      roomTypeBufferMinutes(
+        bufferRoomTypeRequests,
+        (roomTypes ?? []).map((roomType) => ({
+          id: roomType._id,
+          name: roomType.name,
+          standardSetupMinutes: roomType.standardSetupMinutes,
+          standardCleanupMinutes: roomType.standardCleanupMinutes,
+        }))
+      ),
+    [bufferRoomTypeRequests, roomTypes]
   );
   const roomTypeRequestCapacity = useMemo(
     () =>
@@ -200,39 +229,46 @@ export function BookingWizard() {
     return `${roomType?.name ?? "Selected room type"} only has ${roomType?.activeRoomCount ?? 0} active room(s).`;
   }, [roomSelectionMode, roomTypes, selectedRoomTypeRequests]);
   const roomSelectionError = selectionError ?? quantityAvailabilityError;
-  const availabilityBlocks = useMemo(
-    () =>
-      completeTimeInputs(timeInputs)
-        ? [
-            { start: iso(timeInputs.date, timeInputs.setupStart), end: iso(timeInputs.date, timeInputs.setupEnd) },
-            { start: iso(timeInputs.date, timeInputs.sessionStart), end: iso(timeInputs.date, timeInputs.sessionEnd) },
-            { start: iso(timeInputs.date, timeInputs.cleanupStart), end: iso(timeInputs.date, timeInputs.cleanupEnd) },
-          ]
-        : null,
-    [timeInputs]
-  );
   const bookingBlocks = useMemo<BookingBlock[] | null>(
     () =>
       completeTimeInputs(timeInputs)
-        ? [
-            { label: "Setup", start: iso(timeInputs.date, timeInputs.setupStart), end: iso(timeInputs.date, timeInputs.setupEnd) },
-            { label: "Session", start: iso(timeInputs.date, timeInputs.sessionStart), end: iso(timeInputs.date, timeInputs.sessionEnd) },
-            { label: "Cleanup", start: iso(timeInputs.date, timeInputs.cleanupStart), end: iso(timeInputs.date, timeInputs.cleanupEnd) },
-          ]
+        ? bookingBlocksFromSessionWindow(
+            iso(timeInputs.date, timeInputs.sessionStart),
+            iso(timeInputs.date, timeInputs.sessionEnd),
+            selectedBuffers
+          )
         : null,
-    [timeInputs]
+    [selectedBuffers, timeInputs]
   );
   const timeError = useMemo(
-    () => (bookingBlocks ? validateBookingBlocks(bookingBlocks) : null),
-    [bookingBlocks]
+    () => {
+      if (!bookingBlocks) return null;
+
+      return (
+        validateBookingBlocks(bookingBlocks) ??
+        validateSessionWithinOpeningHours(
+          bookingBlocks.find((block) => block.label === "Session") ?? bookingBlocks[1],
+          tenant?.hoursOfOperation ?? "",
+          tenant?.timezone ?? "UTC"
+        ) ??
+        validateBookingWithinStaffHours(
+          { start: bookingBlocks[0].start, end: bookingBlocks[bookingBlocks.length - 1].end },
+          tenant?.hoursOfOperation ?? "",
+          tenant?.timezone ?? "UTC"
+        )
+      );
+    },
+    [bookingBlocks, tenant?.hoursOfOperation, tenant?.timezone]
   );
   const availabilityRequest = useMemo(
     () =>
-      availabilityBlocks && !roomSelectionError && !timeError
+      bookingBlocks && !roomSelectionError && !timeError
         ? {
             tenantSlug: TENANT_SLUG,
             roomSelectionMode,
-            blocks: availabilityBlocks,
+            blocks: bookingBlocks
+              .filter((block) => block.label === "Session")
+              .map((block) => ({ start: block.start, end: block.end })),
             requestedRoomIds:
               roomSelectionMode === "SpecificRooms"
                 ? requestedRoomIds
@@ -243,7 +279,7 @@ export function BookingWizard() {
                 : [],
           }
         : null,
-    [availabilityBlocks, requestedRoomIds, roomSelectionError, roomSelectionMode, selectedRoomTypeRequests, timeError]
+    [bookingBlocks, requestedRoomIds, roomSelectionError, roomSelectionMode, selectedRoomTypeRequests, timeError]
   );
   const availabilityRequestKey = useMemo(
     () => (availabilityRequest ? JSON.stringify(availabilityRequest) : ""),
@@ -368,12 +404,8 @@ export function BookingWizard() {
       setCampusId("");
       setTimeInputs({
         date: "",
-        setupStart: "",
-        setupEnd: "",
         sessionStart: "",
         sessionEnd: "",
-        cleanupStart: "",
-        cleanupEnd: "",
       });
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Could not submit request.");
@@ -549,6 +581,9 @@ export function BookingWizard() {
                       <Badge variant="outline" className="gap-1">
                         <Users className="size-3" /> ~{roomType.defaultCapacity} each
                       </Badge>
+                      <Badge variant="outline" className="gap-1">
+                        <Clock className="size-3" /> {roomType.standardSetupMinutes ?? 30}+{roomType.standardCleanupMinutes ?? 30} min
+                      </Badge>
                     </div>
                     <p className="mt-3 text-sm text-muted-foreground">
                       {quantity > 0
@@ -576,17 +611,25 @@ export function BookingWizard() {
           {roomSelectionError && selectionTouched ? <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{roomSelectionError}</p> : null}
         </Card>
         <Card>
-          <h2 className="font-semibold text-foreground">2. Choose date, time, and booking blocks</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <h2 className="font-semibold text-foreground">2. Choose date and session time</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Setup and cleanup are added automatically from room type standards: {selectedBuffers.setupMinutes} min setup and {selectedBuffers.cleanupMinutes} min cleanup.
+          </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
             <label className="text-sm font-medium text-foreground">Date<input name="date" type="date" required value={timeInputs.date} onInput={(event) => setTimeInput("date", event.currentTarget.value)} onChange={(event) => setTimeInput("date", event.currentTarget.value)} className={formFieldClass} /></label>
-            <label className="text-sm font-medium text-foreground">Setup start<input name="setupStart" type="time" required value={timeInputs.setupStart} onInput={(event) => setTimeInput("setupStart", event.currentTarget.value)} onChange={(event) => setTimeInput("setupStart", event.currentTarget.value)} className={formFieldClass} /></label>
-            <label className="text-sm font-medium text-foreground">Setup end<input name="setupEnd" type="time" required value={timeInputs.setupEnd} onInput={(event) => setTimeInput("setupEnd", event.currentTarget.value)} onChange={(event) => setTimeInput("setupEnd", event.currentTarget.value)} className={formFieldClass} /></label>
             <label className="text-sm font-medium text-foreground">Session start<input name="sessionStart" type="time" required value={timeInputs.sessionStart} onInput={(event) => setTimeInput("sessionStart", event.currentTarget.value)} onChange={(event) => setTimeInput("sessionStart", event.currentTarget.value)} className={formFieldClass} /></label>
-            <label className="text-sm font-medium text-foreground">Session end<input name="sessionEnd" type="time" required value={timeInputs.sessionEnd} onInput={(event) => setTimeInput("sessionEnd", event.currentTarget.value)} onChange={(event) => setTimeInput("sessionEnd", event.currentTarget.value)} className={formFieldClass} /></label>
-            <label className="text-sm font-medium text-foreground">Cleanup start<input name="cleanupStart" type="time" required value={timeInputs.cleanupStart} onInput={(event) => setTimeInput("cleanupStart", event.currentTarget.value)} onChange={(event) => setTimeInput("cleanupStart", event.currentTarget.value)} className={formFieldClass} /></label>
-            <label className="text-sm font-medium text-foreground">Cleanup end<input name="cleanupEnd" type="time" required value={timeInputs.cleanupEnd} onInput={(event) => setTimeInput("cleanupEnd", event.currentTarget.value)} onChange={(event) => setTimeInput("cleanupEnd", event.currentTarget.value)} className={formFieldClass} /></label>
+            <label className="text-sm font-medium text-foreground">Session finish<input name="sessionEnd" type="time" required value={timeInputs.sessionEnd} onInput={(event) => setTimeInput("sessionEnd", event.currentTarget.value)} onChange={(event) => setTimeInput("sessionEnd", event.currentTarget.value)} className={formFieldClass} /></label>
           </div>
           {timeError ? <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{timeError}</p> : null}
+          {bookingBlocks && !timeError ? (
+            <div className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-3">
+              {bookingBlocks.map((block) => (
+                <p key={block.label} className="rounded-xl bg-muted/40 p-3">
+                  <span className="font-medium text-foreground">{block.label}</span>: {formatBlockTime(block, tenant?.timezone)}
+                </p>
+              ))}
+            </div>
+          ) : null}
         </Card>
         <Card className="grid gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -657,7 +700,7 @@ export function BookingWizard() {
             </p>
             <p>
               Occupied window: <span className="font-medium text-foreground">
-                {bookingBlocks ? `${bookingBlocks[0].start} to ${bookingBlocks[2].end}` : "Complete times to preview"}
+                {bookingBlocks ? formatBlockTime({ start: bookingBlocks[0].start, end: bookingBlocks[2].end }, tenant?.timezone) : "Complete date and session times to preview"}
               </span>
             </p>
             <p>

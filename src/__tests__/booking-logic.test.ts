@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   allocateRoomsByType,
   bookingDurationMinutes,
+  bookingBlocksFromSessionWindow,
   checkAvailabilityConflicts,
   formatBookingDuration,
   hasBookingConflict,
   occupiedBookingWindow,
   rangesOverlap,
+  roomTypeBufferMinutes,
   validateBookingBlocks,
+  validateBookingWithinStaffHours,
   validateMaxBookingDuration,
+  validateSessionWithinOpeningHours,
   validateRoomSelectionState,
   type AssignedBooking,
+  type BookingBlock,
   type BookingRange,
   type RoomAllocationRoom,
 } from "@/lib/booking-logic";
@@ -123,6 +128,101 @@ describe("booking block validation", () => {
         { label: "Session", start: "2026-05-18T09:30:00+01:00", end: "2026-05-18T10:30:00+01:00" },
         { label: "Cleanup", start: "2026-05-18T10:30:00+01:00", end: "2026-05-18T11:00:00+01:00" },
       ])
+    ).toBeNull();
+  });
+
+  it("builds setup and cleanup blocks from room type buffers", () => {
+    expect(
+      bookingBlocksFromSessionWindow(
+        "2026-05-18T09:30:00+01:00",
+        "2026-05-18T10:30:00+01:00",
+        { setupMinutes: 45, cleanupMinutes: 20 }
+      )
+    ).toEqual([
+      {
+        label: "Setup",
+        start: "2026-05-18T07:45:00.000Z",
+        end: "2026-05-18T09:30:00+01:00",
+      },
+      {
+        label: "Session",
+        start: "2026-05-18T09:30:00+01:00",
+        end: "2026-05-18T10:30:00+01:00",
+      },
+      {
+        label: "Cleanup",
+        start: "2026-05-18T10:30:00+01:00",
+        end: "2026-05-18T09:50:00.000Z",
+      },
+    ]);
+  });
+
+  it("uses the largest setup and cleanup buffer across selected room types", () => {
+    expect(
+      roomTypeBufferMinutes(
+        [
+          { roomTypeId: "classroom", quantity: 1 },
+          { roomTypeId: "immersive", quantity: 1 },
+        ],
+        [
+          { id: "classroom", name: "Classroom", standardSetupMinutes: 30, standardCleanupMinutes: 15 },
+          { id: "immersive", name: "Immersive", standardSetupMinutes: 60, standardCleanupMinutes: 45 },
+        ]
+      )
+    ).toEqual({ setupMinutes: 60, cleanupMinutes: 45 });
+  });
+
+  it("validates session times against opening hours", () => {
+    expect(
+      validateSessionWithinOpeningHours(
+        { start: "2026-05-18T09:30:00+01:00", end: "2026-05-18T10:30:00+01:00" },
+        "Monday: 09:00 - 17:00",
+        "Europe/London"
+      )
+    ).toBeNull();
+
+    expect(
+      validateSessionWithinOpeningHours(
+        { start: "2026-05-18T08:30:00+01:00", end: "2026-05-18T10:30:00+01:00" },
+        "Monday: 09:00 - 17:00",
+        "Europe/London"
+      )
+    ).toBe("Session time must be within Monday opening hours.");
+  });
+
+  it("allows setup and cleanup inside staff hours around public hours", () => {
+    const hours = "Monday: Public 09:00 - 17:00; Staff 08:30 - 17:30";
+
+    expect(
+      validateSessionWithinOpeningHours(
+        { start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T17:00:00+01:00" },
+        hours,
+        "Europe/London"
+      )
+    ).toBeNull();
+
+    expect(
+      validateBookingWithinStaffHours(
+        { start: "2026-05-18T08:30:00+01:00", end: "2026-05-18T17:30:00+01:00" },
+        hours,
+        "Europe/London"
+      )
+    ).toBeNull();
+  });
+
+  it("excludes setup and cleanup from max duration rules", () => {
+    const blocks: BookingBlock[] = [
+      { label: "Setup", start: "2026-05-18T08:30:00+01:00", end: "2026-05-18T09:00:00+01:00" },
+      { label: "Session", start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T17:00:00+01:00" },
+      { label: "Cleanup", start: "2026-05-18T17:00:00+01:00", end: "2026-05-18T17:30:00+01:00" },
+    ];
+
+    expect(
+      validateMaxBookingDuration(
+        blocks,
+        [{ roomTypeId: "classroom", quantity: 1 }],
+        [{ id: "classroom", name: "Classroom", maxBookingDurationMinutes: 480 }]
+      )
     ).toBeNull();
   });
 
