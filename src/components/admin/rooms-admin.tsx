@@ -53,12 +53,13 @@ import {
   DoorOpenIcon,
   PlusIcon,
   PencilIcon,
-  Trash2Icon,
   UsersIcon,
   SearchIcon,
-  FilterIcon,
   LayoutGridIcon,
   ListIcon,
+  ImageIcon,
+  XIcon,
+  ArchiveIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -69,6 +70,8 @@ type Room = {
   name: string;
   description?: string;
   capacity: number;
+  imageStorageId?: Id<"_storage">;
+  imageUrl?: string | null;
   active: boolean;
   campusId?: Id<"campuses">;
   roomTypeId: Id<"roomTypes">;
@@ -127,24 +130,40 @@ function NoResults({ query }: { query: string }) {
 interface RoomCardProps {
   room: Room;
   onEdit: (room: Room) => void;
-  onDelete: (room: Room) => void;
+  onArchive: (room: Room) => void;
 }
 
-function RoomCard({ room, onEdit, onDelete }: RoomCardProps) {
+function RoomThumbnail({ room }: { room: Pick<Room, "name" | "imageUrl"> }) {
+  return (
+    <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+      {room.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={room.imageUrl} alt="" className="size-full object-cover" />
+      ) : (
+        <ImageIcon className="size-4 text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
+function RoomCard({ room, onEdit, onArchive }: RoomCardProps) {
   return (
     <div className={cn(
       "flex flex-col gap-3 rounded-xl border border-border p-4 bg-card shadow-sm",
       !room.active && "opacity-60"
     )}>
       <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              {room.code}
-            </span>
-            <StatusDot active={room.active} />
+        <div className="flex min-w-0 items-start gap-3">
+          <RoomThumbnail room={room} />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold text-muted-foreground">
+                {room.code}
+              </span>
+              <StatusDot active={room.active} />
+            </div>
+            <p className="mt-1 truncate font-medium text-foreground">{room.name}</p>
           </div>
-          <p className="mt-1 font-medium text-foreground">{room.name}</p>
         </div>
         <StatusBadge status={room.active ? "Active" : "Inactive"} />
       </div>
@@ -181,10 +200,10 @@ function RoomCard({ room, onEdit, onDelete }: RoomCardProps) {
           variant="ghost"
           size="sm"
           className="h-7 text-xs gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
-          onClick={() => onDelete(room)}
+          onClick={() => onArchive(room)}
         >
-          <Trash2Icon className="size-3" />
-          Delete
+          <ArchiveIcon className="size-3" />
+          Archive
         </Button>
       </div>
     </div>
@@ -204,8 +223,12 @@ interface RoomFormDialogProps {
     name: string;
     description?: string;
     capacity: number;
+    imageStorageId?: Id<"_storage">;
+    removeImage?: boolean;
     active: boolean;
   }) => Promise<void>;
+  onUploadImage: (file: File) => Promise<Id<"_storage">>;
+  existingCodes: Array<{ id: Id<"rooms">; code: string }>;
 }
 
 function RoomFormDialog({
@@ -215,6 +238,8 @@ function RoomFormDialog({
   campuses,
   roomTypes,
   onSave,
+  onUploadImage,
+  existingCodes,
 }: RoomFormDialogProps) {
   const [campusId, setCampusId] = useState<string>(editing?.campusId ?? "");
   const [roomTypeId, setRoomTypeId] = useState<string>(editing?.roomTypeId ?? "");
@@ -222,33 +247,105 @@ function RoomFormDialog({
   const [name, setName] = useState(editing?.name ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
   const [capacity, setCapacity] = useState(String(editing?.capacity ?? 1));
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(editing?.imageUrl ?? null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [active, setActive] = useState(editing?.active ?? true);
   const [saving, setSaving] = useState(false);
+  const selectableRoomTypes = useMemo(
+    () =>
+      roomTypes.filter(
+        (roomType) => roomType.active || roomType._id === editing?.roomTypeId
+      ),
+    [roomTypes, editing?.roomTypeId]
+  );
 
   useEffect(() => {
-    if (open) {
-      setCampusId(editing?.campusId ?? "");
-      setRoomTypeId(editing?.roomTypeId ?? "");
-      setCode(editing?.code ?? "");
-      setName(editing?.name ?? "");
-      setDescription(editing?.description ?? "");
-      setCapacity(String(editing?.capacity ?? 1));
-      setActive(editing?.active ?? true);
+    return () => {
+      if (imagePreviewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+    };
+  }, [imagePreviewUrl]);
+
+  function handleImageChange(file: File | undefined) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setFormError("Room image must be an image file.");
+      return;
     }
-  }, [open, editing]);
+
+    if (file.size > 10 * 1024 * 1024) {
+      setFormError("Room image must be 10 MB or smaller.");
+      return;
+    }
+
+    if (imagePreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+
+    setImageFile(file);
+    setImagePreviewUrl(URL.createObjectURL(file));
+    setRemoveImage(false);
+    setFormError(null);
+  }
+
+  function handleRemoveImage() {
+    if (imagePreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+
+    setImageFile(null);
+    setImagePreviewUrl(null);
+    setRemoveImage(true);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!roomTypeId) return;
+    const trimmedCode = code.trim().toUpperCase();
+    const trimmedName = name.trim();
+    const parsedCapacity = Number(capacity);
+    const duplicate = existingCodes.some(
+      (room) => room.code.toUpperCase() === trimmedCode && room.id !== editing?._id
+    );
+
+    if (!trimmedCode) {
+      setFormError("Room code is required.");
+      return;
+    }
+
+    if (duplicate) {
+      setFormError("A room with this code already exists.");
+      return;
+    }
+
+    if (!trimmedName) {
+      setFormError("Room name is required.");
+      return;
+    }
+
+    if (!Number.isFinite(parsedCapacity) || parsedCapacity < 0) {
+      setFormError("Capacity must be zero or greater.");
+      return;
+    }
+
     setSaving(true);
+    setFormError(null);
     try {
+      const imageStorageId = imageFile ? await onUploadImage(imageFile) : undefined;
+
       await onSave({
         campusId: campusId ? (campusId as Id<"campuses">) : undefined,
         roomTypeId: roomTypeId as Id<"roomTypes">,
-        code: code.trim().toUpperCase(),
-        name: name.trim(),
+        code: trimmedCode,
+        name: trimmedName,
         description: description.trim() || undefined,
-        capacity: Number(capacity) || 1,
+        capacity: parsedCapacity,
+        imageStorageId,
+        removeImage: removeImage && !imageStorageId,
         active,
       });
       onOpenChange(false);
@@ -295,6 +392,36 @@ function RoomFormDialog({
             </div>
           </div>
 
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="room-image">Room image</Label>
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-3">
+              <div className="flex h-20 w-28 items-center justify-center overflow-hidden rounded-md bg-muted">
+                {imagePreviewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={imagePreviewUrl} alt="" className="size-full object-cover" />
+                ) : (
+                  <ImageIcon className="size-5 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex min-w-48 flex-1 flex-col gap-2">
+                <Input
+                  id="room-image"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => handleImageChange(event.target.files?.[0])}
+                />
+                <div className="flex flex-wrap gap-2">
+                  {imagePreviewUrl ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={handleRemoveImage}>
+                      <XIcon className="size-3.5" />
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="room-name">Room name</Label>
             <Input
@@ -313,7 +440,7 @@ function RoomFormDialog({
                 <SelectValue placeholder="Select room type…" />
               </SelectTrigger>
               <SelectContent>
-                {roomTypes.map((rt) => (
+                {selectableRoomTypes.map((rt) => (
                   <SelectItem key={rt._id} value={rt._id}>
                     {rt.name}
                     {rt.campus ? ` — ${rt.campus.name}` : ""}
@@ -363,6 +490,12 @@ function RoomFormDialog({
             <Switch checked={active} onCheckedChange={setActive} />
           </div>
 
+          {formError ? (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {formError}
+            </p>
+          ) : null}
+
           <DialogFooter className="pt-2">
             <Button
               type="button"
@@ -382,6 +515,7 @@ function RoomFormDialog({
 }
 
 type ViewMode = "table" | "grid";
+type StatusFilter = "active" | "inactive" | "all";
 
 export function RoomsAdmin() {
   const auth = useDashboardAuth();
@@ -404,6 +538,7 @@ export function RoomsAdmin() {
   });
   const upsertRoom = useMutation(api.tenants.upsertRoom);
   const deleteRoom = useMutation(api.tenants.deleteRoom);
+  const generateRoomImageUploadUrl = useMutation(api.files.generateRoomImageUploadUrl);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
@@ -412,6 +547,7 @@ export function RoomsAdmin() {
   const [search, setSearch] = useState("");
   const [filterCampus, setFilterCampus] = useState<string>("");
   const [filterType, setFilterType] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>("active");
 
   const filteredRooms = useMemo(() => {
     if (!rooms) return [];
@@ -425,9 +561,12 @@ export function RoomsAdmin() {
         r.campus?.name.toLowerCase().includes(q);
       const matchCampus = !filterCampus || r.campusId === filterCampus;
       const matchType = !filterType || r.roomTypeId === filterType;
-      return matchSearch && matchCampus && matchType;
+      const matchStatus =
+        filterStatus === "all" ||
+        (filterStatus === "active" ? r.active : !r.active);
+      return matchSearch && matchCampus && matchType && matchStatus;
     });
-  }, [rooms, search, filterCampus, filterType]);
+  }, [rooms, search, filterCampus, filterType, filterStatus]);
 
   function handleAddNew() {
     setEditingRoom(null);
@@ -450,20 +589,42 @@ export function RoomsAdmin() {
     }
   }
 
+  async function handleUploadImage(file: File) {
+    const url = await generateRoomImageUploadUrl({
+      tenantSlug,
+      auth,
+      sizeBytes: file.size,
+    });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to upload room image.");
+    }
+
+    const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
+    return storageId;
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     try {
       await deleteRoom({ tenantSlug, auth, roomId: deleteTarget._id });
-      toast.success("Room removed.");
+      toast.success("Room archived.");
     } catch {
-      toast.error("Failed to remove room.");
+      toast.error("Failed to archive room.");
     } finally {
       setDeleteTarget(null);
     }
   }
 
   const isLoading = rooms === undefined || campuses === undefined || roomTypes === undefined;
-  const hasFilters = search || filterCampus || filterType;
+  const hasFilters = search || filterCampus || filterType || filterStatus !== "active";
+  const activeRoomCount = rooms?.filter((room) => room.active).length ?? 0;
+  const inactiveRoomCount = rooms?.filter((room) => !room.active).length ?? 0;
 
   return (
     <div className="flex flex-col gap-8 pb-16">
@@ -520,6 +681,17 @@ export function RoomsAdmin() {
           </SelectContent>
         </Select>
 
+        <Select value={filterStatus} onValueChange={(v) => setFilterStatus((v as StatusFilter) ?? "active")}>
+          <SelectTrigger className="h-8 w-44 text-sm">
+            <SelectValue placeholder="Active rooms" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Active rooms</SelectItem>
+            <SelectItem value="inactive">Archived rooms</SelectItem>
+            <SelectItem value="all">All rooms</SelectItem>
+          </SelectContent>
+        </Select>
+
         {hasFilters && (
           <Button
             variant="ghost"
@@ -529,6 +701,7 @@ export function RoomsAdmin() {
               setSearch("");
               setFilterCampus("");
               setFilterType("");
+              setFilterStatus("active");
             }}
           >
             Clear filters
@@ -563,6 +736,9 @@ export function RoomsAdmin() {
           Showing{" "}
           <span className="font-medium text-foreground">{filteredRooms.length}</span>{" "}
           of <span className="font-medium text-foreground">{rooms.length}</span> rooms
+          <span className="ml-2 text-muted-foreground">
+            {activeRoomCount} active · {inactiveRoomCount} archived
+          </span>
         </p>
       )}
 
@@ -588,6 +764,7 @@ export function RoomsAdmin() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="pl-6">Code</TableHead>
+                    <TableHead>Image</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Campus</TableHead>
                     <TableHead>Type</TableHead>
@@ -603,6 +780,9 @@ export function RoomsAdmin() {
                         <span className="font-mono text-xs font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                           {room.code}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        <RoomThumbnail room={room as Room} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -653,9 +833,9 @@ export function RoomsAdmin() {
                             size="icon"
                             className="size-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                             onClick={() => setDeleteTarget(room as unknown as Room)}
-                            aria-label={`Delete ${room.name}`}
+                            aria-label={`Archive ${room.name}`}
                           >
-                            <Trash2Icon className="size-3.5" />
+                            <ArchiveIcon className="size-3.5" />
                           </Button>
                         </div>
                       </TableCell>
@@ -691,7 +871,7 @@ export function RoomsAdmin() {
                     setEditingRoom(r);
                     setDialogOpen(true);
                   }}
-                  onDelete={setDeleteTarget}
+                  onArchive={setDeleteTarget}
                 />
               ))}
             </div>
@@ -700,6 +880,7 @@ export function RoomsAdmin() {
       )}
 
       <RoomFormDialog
+        key={`${dialogOpen ? "open" : "closed"}-${editingRoom?._id ?? "new"}`}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         editing={editingRoom}
@@ -713,6 +894,11 @@ export function RoomsAdmin() {
           }[]
         }
         onSave={handleSave}
+        onUploadImage={handleUploadImage}
+        existingCodes={(rooms ?? []).map((room) => ({
+          id: room._id,
+          code: room.code,
+        }))}
       />
 
       <AlertDialog
@@ -721,9 +907,9 @@ export function RoomsAdmin() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete room?</AlertDialogTitle>
+            <AlertDialogTitle>Archive room?</AlertDialogTitle>
             <AlertDialogDescription>
-              {`Delete "${deleteTarget?.name}" (${deleteTarget?.code})? If this room is used in any bookings, it will be deactivated instead of permanently deleted.`}
+              {`Archive "${deleteTarget?.name}" (${deleteTarget?.code})? It will be hidden from new booking choices and resource views, while historic bookings keep showing the room.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -732,7 +918,7 @@ export function RoomsAdmin() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              Archive
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

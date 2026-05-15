@@ -342,7 +342,7 @@ export function RoomTypesAdmin() {
     activeOnly: false,
   });
 
-  const roomTypes = useQuery(api.tenants.listPrivateRoomTypes, {
+  const roomTypes = useQuery(api.tenants.listAdminRoomTypes, {
     tenantSlug,
     auth,
     activeOnly: false,
@@ -373,8 +373,8 @@ export function RoomTypesAdmin() {
       name: submitValue(form, "name"),
       description: submitValue(form, "description") || undefined,
       defaultCapacity: Number(submitValue(form, "defaultCapacity") || 0),
-      maxDurationHours: optionalNumber(form, "maxDurationHours"),
-      isSpecial: formData.get("isSpecial") === "on",
+      maxBookingDurationMinutes: optionalNumber(form, "maxBookingDurationMinutes"),
+      specialRoom: formData.get("specialRoom") === "on",
       active: formData.get("active") === "on",
       sortOrder: optionalNumber(form, "sortOrder"),
     });
@@ -462,10 +462,10 @@ export function RoomTypesAdmin() {
                   Max h
                 </span>
                 <input
-                  name="maxDurationHours"
+                  name="maxBookingDurationMinutes"
                   type="number"
                   min="1"
-                  defaultValue={editing?.maxDurationHours ?? ""}
+                  defaultValue={editing?.maxBookingDurationMinutes ?? ""}
                   className="mt-1 w-full rounded-xl border border-border px-3 py-2"
                 />
               </label>
@@ -486,9 +486,9 @@ export function RoomTypesAdmin() {
 
             <label className="flex items-center gap-2 text-sm font-medium text-foreground">
               <input
-                name="isSpecial"
+                name="specialRoom"
                 type="checkbox"
-                defaultChecked={editing?.isSpecial}
+                defaultChecked={editing?.specialRoom}
               />
               Special/non-standard room type
             </label>
@@ -553,8 +553,8 @@ export function RoomTypesAdmin() {
                     </td>
                     <td>{roomType.defaultCapacity}</td>
                     <td>
-                      {roomType.maxDurationHours
-                        ? `${roomType.maxDurationHours}h`
+                      {roomType.maxBookingDurationMinutes
+                        ? `${roomType.maxBookingDurationMinutes} min`
                         : "No limit"}
                     </td>
                     <td>
@@ -563,7 +563,7 @@ export function RoomTypesAdmin() {
                       />
                     </td>
                     <td>
-                      {roomType.isSpecial ? (
+                      {roomType.specialRoom ? (
                         <StatusPill status="Special" />
                       ) : (
                         "Room"

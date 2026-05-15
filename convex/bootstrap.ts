@@ -150,7 +150,17 @@ async function upsertUser(
 async function upsertCampus(
   ctx: MutationCtx,
   tenantId: Id<"tenants">,
-  campus: { name: string; sortOrder: number }
+  campus: {
+    name: string;
+    sortOrder: number;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    region?: string;
+    postalCode?: string;
+    country?: string;
+    details?: string;
+  }
 ) {
   const campuses = await ctx.db
     .query("campuses")
@@ -160,6 +170,13 @@ async function upsertCampus(
   const payload = {
     tenantId,
     name: campus.name,
+    addressLine1: campus.addressLine1,
+    addressLine2: campus.addressLine2,
+    city: campus.city,
+    region: campus.region,
+    postalCode: campus.postalCode,
+    country: campus.country,
+    details: campus.details,
     active: true,
     sortOrder: campus.sortOrder,
   };
@@ -193,8 +210,10 @@ async function upsertRoomType(
     name: roomType.name,
     description: roomType.description,
     defaultCapacity: roomType.defaultCapacity,
+    maxBookingDurationMinutes: undefined,
+    specialRoom: roomType.name !== "Classroom",
     maxDurationHours: undefined,
-    isSpecial: roomType.name !== "Classroom",
+    isSpecial: undefined,
     active: true,
     sortOrder: roomType.sortOrder,
     updatedAt: now,
@@ -280,8 +299,26 @@ async function seedUniversityOfNothing(
   ]);
 
   const campusPairs = await Promise.all([
-    upsertCampus(ctx, tenantId, { name: "Brentford", sortOrder: 10 }),
-    upsertCampus(ctx, tenantId, { name: "Reading", sortOrder: 20 }),
+    upsertCampus(ctx, tenantId, {
+      name: "Brentford",
+      addressLine1: "Paragon House",
+      addressLine2: "Boston Manor Road",
+      city: "Brentford",
+      region: "Greater London",
+      postalCode: "TW8 9GA",
+      country: "United Kingdom",
+      details: "Main reception entrance for simulation centre visitors.",
+      sortOrder: 10,
+    }),
+    upsertCampus(ctx, tenantId, {
+      name: "Reading",
+      addressLine1: "Reading Simulation Centre",
+      city: "Reading",
+      region: "Berkshire",
+      country: "United Kingdom",
+      details: "Use campus reception for visitor sign-in.",
+      sortOrder: 20,
+    }),
   ]);
   const [brentfordCampusId, readingCampusId] = campusPairs;
 

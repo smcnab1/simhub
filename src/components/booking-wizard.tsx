@@ -163,7 +163,10 @@ export function BookingWizard() {
                     <p className="font-medium text-foreground">{room.name}</p>
                   </div>
                 </div>
-                <p className="mt-3 text-sm text-muted-foreground">Max {room.maxDurationHours}h · {room.isSpecial ? "· special type" : ""}</p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {room.maxBookingDurationMinutes ? `Max ${room.maxBookingDurationMinutes} min` : "No max duration"}
+                  {room.specialRoom ? " · special type" : ""}
+                </p>
               </label>
             ))}
           </div>

@@ -35,8 +35,18 @@ export default defineSchema({
   campuses: defineTable({
     tenantId: v.id("tenants"),
     name: v.string(),
+    addressLine1: v.optional(v.string()),
+    addressLine2: v.optional(v.string()),
+    city: v.optional(v.string()),
+    region: v.optional(v.string()),
+    postalCode: v.optional(v.string()),
+    country: v.optional(v.string()),
+    details: v.optional(v.string()),
     active: v.optional(v.boolean()),
     sortOrder: v.optional(v.number()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    archivedAt: v.optional(v.number()),
   }).index("by_tenant", ["tenantId"]),
 
   roomTypes: defineTable({
@@ -52,10 +62,14 @@ export default defineSchema({
     defaultCapacity: v.number(),
 
     // Optional rule for bookings of this room type.
+    maxBookingDurationMinutes: v.optional(v.number()),
+    // Legacy field kept optional while existing data is backfilled.
     maxDurationHours: v.optional(v.number()),
 
     // Use for specialist spaces that need extra admin attention.
-    isSpecial: v.boolean(),
+    specialRoom: v.optional(v.boolean()),
+    // Legacy field kept optional while existing data is backfilled.
+    isSpecial: v.optional(v.boolean()),
 
     active: v.boolean(),
     sortOrder: v.optional(v.number()),
