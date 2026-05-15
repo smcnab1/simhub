@@ -1,6 +1,8 @@
 import { RequestDetail } from "@/components/request-detail";
 import { PublicNav, PageShell } from "@/components/ui";
 
+export const dynamic = "force-dynamic";
+
 export default async function RequestTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
