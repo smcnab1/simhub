@@ -143,7 +143,7 @@ async function validateCustomInputs(
   const inputByFieldId = new Map(customInputs.map((input) => [input.fieldId, input]));
 
   for (const field of formConfig.fields) {
-    if (field.type === "divider" || field.type === "note" || !field.required) {
+    if (field.type === "divider" || field.type === "note") {
       continue;
     }
 
@@ -155,8 +155,39 @@ async function validateCustomInputs(
       (typeof value === "string" && value.trim() === "") ||
       (Array.isArray(value) && value.length === 0);
 
-    if (missing) {
+    if (field.required && missing) {
       throw new Error(`${field.label} is required.`);
+    }
+
+    if (missing) {
+      continue;
+    }
+
+    if ((field.type === "text" || field.type === "textarea") && field.maxLength) {
+      if (typeof value !== "string" || value.length > field.maxLength) {
+        throw new Error(`${field.label} must be ${field.maxLength} characters or fewer.`);
+      }
+    }
+
+    if (field.type === "number" && Number.isNaN(Number(value))) {
+      throw new Error(`${field.label} must be a number.`);
+    }
+
+    if (field.type === "radio" || field.type === "select") {
+      if (typeof value !== "string" || !(field.options ?? []).includes(value)) {
+        throw new Error(`${field.label} has an invalid option.`);
+      }
+    }
+
+    if (field.type === "checkboxGroup") {
+      const values = Array.isArray(value) ? value : [];
+      if (
+        values.some(
+          (item) => typeof item !== "string" || !(field.options ?? []).includes(item)
+        )
+      ) {
+        throw new Error(`${field.label} has an invalid option.`);
+      }
     }
   }
 }
@@ -896,7 +927,7 @@ export const createRequest = mutation({
       attendeeCount: args.attendeeCount,
       details: args.details.trim(),
       ccEmails: normalizedCcEmails,
-      timezone: args.timezone,
+      timezone: tenant.timezone,
       blocks,
       roomSelectionMode: args.roomSelectionMode,
       requestedRoomIds: args.roomSelectionMode === "SpecificRooms" ? args.requestedRoomIds : undefined,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useDashboardAuth } from "@/components/dashboard-auth";
@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -47,14 +46,14 @@ const fieldTypes: FormFieldType[] = [
 ];
 
 const fieldTypeLabels: Record<FormFieldType, string> = {
-  text: "Short text",
+  text: "Short Text",
   number: "Number",
-  textarea: "Long text",
-  radio: "Radio buttons",
+  textarea: "Long Text",
+  radio: "Radio Buttons",
   select: "Dropdown",
   checkboxGroup: "Checkboxes",
   divider: "Divider",
-  note: "Note / info",
+  note: "Note / Info",
 };
 
 const standardFields = [
@@ -68,10 +67,72 @@ const standardFields = [
 ] as const;
 
 function parseOptions(value: string) {
+  const seen = new Set<string>();
   return value
-    .split(",")
+    .split(/[,\n]/)
     .map((item) => item.trim())
-    .filter(Boolean);
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+function normalizeMaxLength(value: string) {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
+function fieldTypeLabel(type: string) {
+  return fieldTypeLabels[type as FormFieldType] ?? type;
+}
+
+function sanitizeFields(fields: FormField[]) {
+  return fields
+    .map((field) => {
+      const label = field.label.trim();
+      const helpText = field.helpText?.trim() || undefined;
+      const needsOptions =
+        field.type === "radio" ||
+        field.type === "select" ||
+        field.type === "checkboxGroup";
+      const supportsMaxLength = field.type === "text" || field.type === "textarea";
+
+      return {
+        ...field,
+        label,
+        helpText,
+        options: needsOptions
+          ? parseOptions((field.options ?? []).join(", "))
+          : undefined,
+        maxLength: supportsMaxLength ? field.maxLength : undefined,
+      };
+    })
+    .filter((field) => field.label);
+}
+
+function validateFields(fields: FormField[]) {
+  for (const field of fields) {
+    const needsOptions =
+      field.type === "radio" ||
+      field.type === "select" ||
+      field.type === "checkboxGroup";
+
+    if (needsOptions && (field.options ?? []).length === 0) {
+      return `${field.label} needs at least one option.`;
+    }
+
+    if (
+      field.maxLength !== undefined &&
+      (!Number.isInteger(field.maxLength) || field.maxLength <= 0)
+    ) {
+      return `${field.label} needs a valid character limit.`;
+    }
+  }
+
+  return null;
 }
 
 type FormField = {
@@ -81,6 +142,7 @@ type FormField = {
   required: boolean;
   helpText?: string;
   options?: string[];
+  maxLength?: number;
 };
 
 function StandardFieldRow({
@@ -95,7 +157,7 @@ function StandardFieldRow({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground">{field.label}</p>
-        <p className="text-xs text-muted-foreground capitalize">{field.type} · system field</p>
+        <p className="text-xs text-muted-foreground">{fieldTypeLabel(field.type)} · system field</p>
       </div>
       <StatusBadge status={field.required ? "Required" : "Optional"} />
     </div>
@@ -117,6 +179,16 @@ function CustomFieldRow({
     field.type === "radio" ||
     field.type === "select" ||
     field.type === "checkboxGroup";
+  const supportsMaxLength = field.type === "text" || field.type === "textarea";
+  const [optionsValue, setOptionsValue] = useState(
+    (field.options ?? []).join(", ")
+  );
+
+  function commitOptions(value: string) {
+    const options = parseOptions(value);
+    setOptionsValue(options.join(", "));
+    onChange(field.id, { options });
+  }
 
   return (
     <div className={cn(
@@ -149,7 +221,19 @@ function CustomFieldRow({
             <Select
               value={field.type}
               onValueChange={(val) =>
-                onChange(field.id, { type: val as FormFieldType })
+                onChange(field.id, {
+                  type: val as FormFieldType,
+                  options:
+                    val === "radio" ||
+                    val === "select" ||
+                    val === "checkboxGroup"
+                      ? field.options ?? []
+                      : undefined,
+                  maxLength:
+                    val === "text" || val === "textarea"
+                      ? field.maxLength
+                      : undefined,
+                })
               }
             >
               <SelectTrigger id={`field-type-${field.id}`} className="h-8 text-sm">
@@ -202,15 +286,39 @@ function CustomFieldRow({
         />
         {needsOptions && (
           <Input
-            value={field.options?.join(", ") ?? ""}
-            onChange={(e) =>
-              onChange(field.id, { options: parseOptions(e.target.value) })
-            }
+            value={optionsValue}
+            onChange={(e) => setOptionsValue(e.target.value)}
+            onBlur={(e) => commitOptions(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              }
+            }}
             placeholder="Options, comma separated"
             className="h-7 text-xs"
           />
         )}
+        {supportsMaxLength && (
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            value={field.maxLength ?? ""}
+            onChange={(e) =>
+              onChange(field.id, {
+                maxLength: normalizeMaxLength(e.target.value),
+              })
+            }
+            placeholder="Max characters (optional)"
+            className="h-7 text-xs"
+          />
+        )}
       </div>
+      {needsOptions && optionsValue !== (field.options ?? []).join(", ") ? (
+        <p className="pl-7 text-xs text-muted-foreground">
+          Options are saved when this field loses focus.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -238,6 +346,8 @@ export function RequestFormAdmin() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const activeFields = draftFields ?? fields;
+  const sanitizedFields = useMemo(() => sanitizeFields(activeFields), [activeFields]);
+  const fieldError = validateFields(sanitizedFields);
 
   function handleFieldChange(id: string, patch: Partial<FormField>) {
     setDraftFields(
@@ -262,13 +372,18 @@ export function RequestFormAdmin() {
   }
 
   async function handleSave() {
+    if (fieldError) {
+      toast.error(fieldError);
+      return;
+    }
+
     setSaving(true);
     try {
       await saveForm({
         tenantSlug,
         auth,
         fileUploadEnabled: Boolean(formConfig?.fileUploadEnabled),
-        fields: activeFields,
+        fields: sanitizedFields,
       });
       setDraftFields(null);
       setSaved(true);
@@ -282,12 +397,17 @@ export function RequestFormAdmin() {
   }
 
   async function handleToggleUploads(enabled: boolean) {
+    if (fieldError) {
+      toast.error(fieldError);
+      return;
+    }
+
     try {
       await saveForm({
         tenantSlug,
         auth,
         fileUploadEnabled: enabled,
-        fields: activeFields,
+        fields: sanitizedFields,
       });
       toast.success(enabled ? "File uploads enabled." : "File uploads disabled.");
     } catch {
@@ -408,13 +528,18 @@ export function RequestFormAdmin() {
           <div className="flex flex-col gap-2">
             {activeFields.map((field, index) => (
               <CustomFieldRow
-                key={field.id}
+                key={`${field.id}:${field.options?.join("|") ?? ""}:${draftFields === null ? "saved" : "draft"}`}
                 field={field}
                 index={index}
                 onChange={handleFieldChange}
                 onRemove={handleRemoveField}
               />
             ))}
+            {fieldError ? (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {fieldError}
+              </p>
+            ) : null}
 
             <div className="flex justify-end pt-2">
               <Button

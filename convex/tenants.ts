@@ -1048,6 +1048,7 @@ const formFieldValidator = v.object({
   required: v.boolean(),
   helpText: v.optional(v.string()),
   options: v.optional(v.array(v.string())),
+  maxLength: v.optional(v.number()),
 });
 
 export const upsertFormConfig = mutation({

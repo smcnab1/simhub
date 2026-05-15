@@ -49,4 +49,5 @@ export type FormField = {
   required?: boolean;
   helpText?: string;
   options?: string[];
+  maxLength?: number;
 };

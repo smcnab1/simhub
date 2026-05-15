@@ -8,6 +8,19 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Card, SectionHeader, formFieldClass, primaryButtonClass, subtleButtonClass } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { zonedDateTimeToIso } from "@/lib/date-time";
 import { formatBlockTime } from "@/lib/format";
 import {
   bookingBlocksFromSessionWindow,
@@ -29,10 +42,6 @@ function value(form: HTMLFormElement, name: string) {
 
 function emails(input: string) {
   return input.split(",").map((item) => item.trim()).filter(Boolean);
-}
-
-function iso(date: string, time: string) {
-  return new Date(`${date}T${time}`).toISOString();
 }
 
 type BookingTimeInputs = {
@@ -72,38 +81,76 @@ function renderCustomField(field: {
   required: boolean;
   helpText?: string;
   options?: string[];
+  maxLength?: number;
 }) {
   if (field.type === "divider") return <hr className="my-2 border-border md:col-span-2" />;
   if (field.type === "note") return <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground md:col-span-2">{field.label}</p>;
 
-  const base = formFieldClass;
-  const label = <span className="text-sm font-medium text-foreground">{field.label}{field.required ? " *" : ""}</span>;
+  const label = <span>{field.label}{field.required ? " *" : ""}</span>;
   const name = `custom:${field.id}`;
 
   return (
-    <label key={field.id} className={field.type === "textarea" || field.type === "checkboxGroup" ? "md:col-span-2" : ""}>
-      {label}
-      {field.type === "textarea" ? <textarea name={name} required={field.required} className={`${base} min-h-28`} /> : null}
+    <div key={field.id} className={field.type === "textarea" || field.type === "checkboxGroup" ? "md:col-span-2" : ""}>
+      <Label htmlFor={name} className="text-sm font-medium text-foreground">
+        {label}
+      </Label>
+      {field.type === "textarea" ? (
+        <Textarea
+          id={name}
+          name={name}
+          required={field.required}
+          maxLength={field.maxLength}
+          className="mt-2 min-h-28"
+        />
+      ) : null}
       {field.type === "select" ? (
-        <select name={name} required={field.required} className={base}>
-          <option value="">Select...</option>
-          {(field.options ?? []).map((option) => <option key={option}>{option}</option>)}
-        </select>
+        <Select name={name} required={field.required}>
+          <SelectTrigger id={name} className="mt-2 w-full">
+            <SelectValue placeholder="Select..." />
+          </SelectTrigger>
+          <SelectContent>
+            {(field.options ?? []).map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : null}
       {field.type === "radio" ? (
-        <div className="mt-2 grid gap-2">
-          {(field.options ?? []).map((option) => <label key={option} className="flex items-center gap-2 text-sm"><input type="radio" name={name} value={option} required={field.required} /> {option}</label>)}
-        </div>
+        <RadioGroup name={name} required={field.required} className="mt-2">
+          {(field.options ?? []).map((option) => (
+            <Label key={option} className="flex items-center gap-2 text-sm font-normal">
+              <RadioGroupItem value={option} />
+              {option}
+            </Label>
+          ))}
+        </RadioGroup>
       ) : null}
       {field.type === "checkboxGroup" ? (
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          {(field.options ?? []).map((option) => <label key={option} className="flex items-center gap-2 text-sm"><input type="checkbox" name={name} value={option} /> {option}</label>)}
+          {(field.options ?? []).map((option) => (
+            <Label key={option} className="flex items-center gap-2 text-sm font-normal">
+              <Checkbox name={name} value={option} />
+              {option}
+            </Label>
+          ))}
         </div>
       ) : null}
-      {field.type === "number" ? <input name={name} type="number" required={field.required} className={base} /> : null}
-      {field.type === "text" ? <input name={name} required={field.required} className={base} /> : null}
+      {field.type === "number" ? (
+        <Input id={name} name={name} type="number" required={field.required} className="mt-2" />
+      ) : null}
+      {field.type === "text" ? (
+        <Input
+          id={name}
+          name={name}
+          required={field.required}
+          maxLength={field.maxLength}
+          className="mt-2"
+        />
+      ) : null}
       {field.helpText ? <span className="mt-1 block text-xs text-muted-foreground">{field.helpText}</span> : null}
-    </label>
+    </div>
   );
 }
 
@@ -233,12 +280,20 @@ export function BookingWizard() {
     () =>
       completeTimeInputs(timeInputs)
         ? bookingBlocksFromSessionWindow(
-            iso(timeInputs.date, timeInputs.sessionStart),
-            iso(timeInputs.date, timeInputs.sessionEnd),
+            zonedDateTimeToIso(
+              timeInputs.date,
+              timeInputs.sessionStart,
+              tenant?.timezone ?? "Europe/London"
+            ),
+            zonedDateTimeToIso(
+              timeInputs.date,
+              timeInputs.sessionEnd,
+              tenant?.timezone ?? "Europe/London"
+            ),
             selectedBuffers
           )
         : null,
-    [selectedBuffers, timeInputs]
+    [selectedBuffers, tenant?.timezone, timeInputs]
   );
   const timeError = useMemo(
     () => {

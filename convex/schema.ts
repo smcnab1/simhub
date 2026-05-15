@@ -300,6 +300,7 @@ export default defineSchema({
         required: v.boolean(),
         helpText: v.optional(v.string()),
         options: v.optional(v.array(v.string())),
+        maxLength: v.optional(v.number()),
       })
     ),
   }).index("by_tenant", ["tenantId"]),

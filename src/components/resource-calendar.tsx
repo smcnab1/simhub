@@ -12,12 +12,26 @@ import {
   LayoutGrid,
   Eye,
   EyeOff,
-  Calendar,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  addDaysToPlainDate,
+  localDateToPlainDate,
+  localDateString,
+  plainDateToLocalDate,
+  todayPlainDate,
+} from "@/lib/date-time";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -56,6 +70,7 @@ type CalendarRequest = {
   requesterName: string;
   attendeeCount: number;
   status: string;
+  timezone?: string;
   blocks: BookingBlock[];
   assignedRoomIds?: string[];
   requestedRoomIds?: string[];
@@ -74,21 +89,6 @@ type CampusGroup = {
 };
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
-
-function startOfToday() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function addDays(date: Date, amount: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + amount);
-  return next;
-}
 
 function formatDateUK(date: Date) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -400,7 +400,10 @@ function UnallocatedPanel({ bookings }: { bookings: CalendarRequest[] }) {
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export function ResourceCalendar() {
-  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfToday());
+  const [selectedDateString, setSelectedDateString] = useState(() =>
+    todayPlainDate()
+  );
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   // Campus collapse/expand state
   const [collapsedCampusIds, setCollapsedCampusIds] = useState<Set<string>>(
@@ -420,6 +423,9 @@ export function ResourceCalendar() {
   // Data
   const auth = useDashboardAuth();
   const tenantSlug = auth.tenantSlug;
+  const tenant = useQuery(api.tenants.getBySlug, {
+    slug: tenantSlug,
+  });
   const rooms = useQuery(api.tenants.listPrivateRooms, {
     tenantSlug,
     auth,
@@ -438,7 +444,11 @@ export function ResourceCalendar() {
   const isLoading =
     rooms === undefined || campuses === undefined || requests === undefined;
 
-  const selectedDateString = isoDate(selectedDate);
+  const tenantTimezone = tenant?.timezone ?? "Europe/London";
+  const selectedDate = useMemo(
+    () => plainDateToLocalDate(selectedDateString),
+    [selectedDateString]
+  );
 
   // All unique room type names for the filter dropdown
   const roomTypeNames = useMemo(() => {
@@ -457,9 +467,13 @@ export function ResourceCalendar() {
       if (!isVisibleBooking(req)) return false;
       if (!showPending && req.status === "Pending") return false;
       if (!showApproved && req.status === "Approved") return false;
-      return req.blocks.some((b) => b.start.slice(0, 10) === selectedDateString);
+      return req.blocks.some(
+        (b) =>
+          localDateString(b.start, req.timezone ?? tenantTimezone) ===
+          selectedDateString
+      );
     });
-  }, [requests, selectedDateString, showPending, showApproved]);
+  }, [requests, selectedDateString, showPending, showApproved, tenantTimezone]);
 
   // Active rooms (with optional room type filter)
   const filteredRooms = useMemo<CalendarRoom[]>(() => {
@@ -600,7 +614,9 @@ export function ResourceCalendar() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setSelectedDate(addDays(selectedDate, -1))}
+                onClick={() =>
+                  setSelectedDateString((date) => addDaysToPlainDate(date, -1))
+                }
                 aria-label="Previous day"
                 className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm hover:bg-muted hover:text-primary"
               >
@@ -608,28 +624,51 @@ export function ResourceCalendar() {
               </button>
 
               {/* Date picker trigger */}
-              <div className="relative">
-                <input
-                  type="date"
-                  value={selectedDateString}
-                  onChange={(e) => {
-                    const d = new Date(e.target.value + "T00:00:00");
-                    if (!isNaN(d.getTime())) setSelectedDate(d);
-                  }}
-                  className="absolute inset-0 cursor-pointer opacity-0"
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                <PopoverTrigger
                   aria-label="Select date"
-                />
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
-                  <Calendar className="size-4 text-primary" />
-                  <span className="text-sm font-semibold text-foreground">
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <CalendarIcon className="size-4 text-primary" />
+                  <span>
                     {formatShortDateUK(selectedDate)}
                   </span>
-                </div>
-              </div>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto p-2">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (!date) return;
+                      setSelectedDateString(localDateToPlainDate(date));
+                      setDatePickerOpen(false);
+                    }}
+                    captionLayout="dropdown"
+                  />
+                  <div className="flex items-center justify-between border-t border-border px-1.5 pt-2">
+                    <p className="text-xs text-muted-foreground">
+                      {tenantTimezone}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedDateString(todayPlainDate());
+                        setDatePickerOpen(false);
+                      }}
+                    >
+                      Today
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
 
               <button
                 type="button"
-                onClick={() => setSelectedDate(addDays(selectedDate, 1))}
+                onClick={() =>
+                  setSelectedDateString((date) => addDaysToPlainDate(date, 1))
+                }
                 aria-label="Next day"
                 className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm hover:bg-muted hover:text-primary"
               >
@@ -638,7 +677,7 @@ export function ResourceCalendar() {
 
               <button
                 type="button"
-                onClick={() => setSelectedDate(startOfToday())}
+                onClick={() => setSelectedDateString(todayPlainDate())}
                 className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
               >
                 Today
