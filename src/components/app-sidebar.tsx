@@ -4,6 +4,7 @@ import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import type { DashboardAuth } from "@/components/dashboard-auth"
+import { getDashboardNavigation } from "@/lib/navigation"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,21 +23,20 @@ import {
 } from "@/components/ui/sidebar"
 import { switchTenant } from "@/lib/tenant-actions"
 import {
-  BellIcon,
   Building2Icon,
-  CalendarDaysIcon,
   ChevronsUpDownIcon,
-  ClipboardListIcon,
-  LayoutDashboardIcon,
   LifeBuoyIcon,
-  Settings2Icon,
   ShieldCheckIcon,
 } from "lucide-react"
 
 export function AppSidebar({
   auth,
+  environment,
   ...props
-}: React.ComponentProps<typeof Sidebar> & { auth: DashboardAuth }) {
+}: React.ComponentProps<typeof Sidebar> & {
+  auth: DashboardAuth
+  environment?: string
+}) {
   const memberships =
     auth.memberships?.length
       ? auth.memberships
@@ -47,45 +47,10 @@ export function AppSidebar({
             role: auth.role ?? "Staff",
           },
         ]
-  const navMain = [
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: <LayoutDashboardIcon />,
-    },
-    {
-      title: "Requests",
-      url: "/dashboard/requests",
-      icon: <ClipboardListIcon />,
-    },
-    {
-      title: "Calendar",
-      url: "/dashboard/resource-calendar",
-      icon: <CalendarDaysIcon />,
-    },
-    {
-      title: "Notifications",
-      url: "/dashboard/notifications",
-      icon: <BellIcon />,
-    },
-    ...(auth.role === "Admin"
-      ? [
-          {
-            title: "Admin",
-            url: "/dashboard/admin/facility",
-            icon: <Settings2Icon />,
-            items: [
-              { title: "Facility", url: "/dashboard/admin/facility" },
-              { title: "Campuses", url: "/dashboard/admin/campuses" },
-              { title: "Room Types", url: "/dashboard/admin/room-types" },
-              { title: "Rooms", url: "/dashboard/admin/rooms" },
-              { title: "Request Form", url: "/dashboard/admin/forms" },
-              { title: "Accounts", url: "/dashboard/admin/accounts" },
-            ],
-          },
-        ]
-      : []),
-  ]
+  const navGroups = getDashboardNavigation({
+    role: auth.role,
+    environment,
+  })
 
   return (
     <Sidebar variant="sidebar" collapsible="offcanvas" {...props}>
@@ -150,7 +115,7 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navMain} />
+        <NavMain groups={navGroups} />
         <NavSecondary
           items={[
             {

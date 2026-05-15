@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { useDashboardAuth } from "@/components/dashboard-auth";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { AdminSettingsCard } from "@/components/admin/admin-settings-card";
-import { StatusBadge } from "@/components/admin/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +42,8 @@ import { toast } from "sonner";
 import type { Role } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 
-const roles: Role[] = ["Admin", "Staff", "Requester"];
+const roles = ["Admin", "Staff", "Requester"] as const satisfies readonly Role[];
+type TenantAccountRole = (typeof roles)[number];
 
 type User = {
   _id: Id<"users">;
@@ -53,12 +53,15 @@ type User = {
 };
 
 const roleDescriptions: Record<Role, string> = {
+  Developer:
+    "Platform-owner access across tenants. Managed by bootstrap tooling only.",
   Admin: "Full access to admin settings, booking management, and user accounts.",
   Staff: "Can manage bookings and view reports, but cannot change admin settings.",
   Requester: "Can submit booking requests and view their own bookings only.",
 };
 
 const roleColors: Record<Role, string> = {
+  Developer: "text-slate-700 bg-slate-100 border-slate-300",
   Admin: "text-violet-600 bg-violet-50 border-violet-200",
   Staff: "text-blue-600 bg-blue-50 border-blue-200",
   Requester: "text-emerald-600 bg-emerald-50 border-emerald-200",
@@ -107,21 +110,21 @@ function EmptyUsers() {
 
 interface UserFormProps {
   editing: User | null;
-  onSave: (data: { name: string; email: string; role: Role }) => Promise<void>;
+  onSave: (data: { name: string; email: string; role: TenantAccountRole }) => Promise<void>;
   onCancel?: () => void;
 }
 
 function UserForm({ editing, onSave, onCancel }: UserFormProps) {
+  const initialRole =
+    editing?.role === "Admin" ||
+    editing?.role === "Staff" ||
+    editing?.role === "Requester"
+      ? editing.role
+      : "Staff";
   const [name, setName] = useState(editing?.name ?? "");
   const [email, setEmail] = useState(editing?.email ?? "");
-  const [role, setRole] = useState<Role>(editing?.role ?? "Staff");
+  const [role, setRole] = useState<TenantAccountRole>(initialRole);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setName(editing?.name ?? "");
-    setEmail(editing?.email ?? "");
-    setRole(editing?.role ?? "Staff");
-  }, [editing]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -167,7 +170,7 @@ function UserForm({ editing, onSave, onCancel }: UserFormProps) {
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="user-role">Role</Label>
-        <Select value={role} onValueChange={(v) => setRole(v as Role)}>
+        <Select value={role} onValueChange={(v) => setRole(v as TenantAccountRole)}>
           <SelectTrigger id="user-role">
             <SelectValue />
           </SelectTrigger>
@@ -234,8 +237,9 @@ export function AccountsAdmin() {
   const [editingId, setEditingId] = useState<Id<"users"> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const editing = users?.find((u) => u._id === editingId) as User | undefined;
+  const editingDeveloper = editing?.role === "Developer";
 
-  async function handleSave(data: { name: string; email: string; role: Role }) {
+  async function handleSave(data: { name: string; email: string; role: TenantAccountRole }) {
     try {
       await upsertUser({
         tenantSlug,
@@ -276,19 +280,29 @@ export function AccountsAdmin() {
       <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
         {/* Add/Edit form */}
         <AdminSettingsCard
-          title={editing ? "Edit user" : "Add user"}
+          title={editingDeveloper ? "Developer account" : editing ? "Edit user" : "Add user"}
           description={
-            editing
+            editingDeveloper
+              ? "Developer users are managed by bootstrap tooling."
+              : editing
               ? `Editing ${editing.name}`
               : "Create a new user account and assign them a role."
           }
           icon={editing ? <PencilIcon className="size-4" /> : <UserPlusIcon className="size-4" />}
         >
-          <UserForm
-            editing={editing ?? null}
-            onSave={handleSave}
-            onCancel={() => setEditingId(null)}
-          />
+          {editingDeveloper ? (
+            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+              This account has platform-level access and cannot be edited from
+              tenant administration.
+            </div>
+          ) : (
+            <UserForm
+              key={editing?._id ?? "new"}
+              editing={editing ?? null}
+              onSave={handleSave}
+              onCancel={() => setEditingId(null)}
+            />
+          )}
         </AdminSettingsCard>
 
         {/* User list */}
@@ -345,24 +359,28 @@ export function AccountsAdmin() {
                   </span>
 
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      onClick={() => setEditingId(user._id)}
-                      aria-label={`Edit ${user.name}`}
-                    >
-                      <PencilIcon className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => setDeleteTarget(user as User)}
-                      aria-label={`Delete ${user.name}`}
-                    >
-                      <Trash2Icon className="size-3.5" />
-                    </Button>
+                    {user.role === "Developer" ? null : (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7"
+                          onClick={() => setEditingId(user._id)}
+                          aria-label={`Edit ${user.name}`}
+                        >
+                          <PencilIcon className="size-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeleteTarget(user as User)}
+                          aria-label={`Delete ${user.name}`}
+                        >
+                          <Trash2Icon className="size-3.5" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

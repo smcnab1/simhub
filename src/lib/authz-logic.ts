@@ -7,3 +7,7 @@ export function canAccessStaff(role: Role) {
 export function canAccessAdmin(role: Role) {
   return role === "Developer" || role === "Admin";
 }
+
+export function canAccessDeveloper(role: Role) {
+  return role === "Developer";
+}

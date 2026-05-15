@@ -3,12 +3,12 @@ import { redirect } from "next/navigation";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
 import { getCurrentUser } from "@/lib/auth";
-import { canAccessAdmin, canAccessStaff } from "@/lib/authz-logic";
+import { canAccessAdmin, canAccessDeveloper, canAccessStaff } from "@/lib/authz-logic";
 import { TENANT_SLUG } from "@/lib/config";
 import type { Role } from "@/lib/domain";
 
 type DashboardAccessOptions = {
-  requiredRole?: "staff" | "admin";
+  requiredRole?: "staff" | "admin" | "developer";
 };
 
 export type DashboardAccess =
@@ -35,7 +35,8 @@ export type DashboardAccess =
       tenantName?: string;
     };
 
-function hasRequiredRole(role: Role, requiredRole: "staff" | "admin") {
+function hasRequiredRole(role: Role, requiredRole: "staff" | "admin" | "developer") {
+  if (requiredRole === "developer") return canAccessDeveloper(role);
   return requiredRole === "admin" ? canAccessAdmin(role) : canAccessStaff(role);
 }
 

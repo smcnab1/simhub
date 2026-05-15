@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const access = await getDashboardAccess();
+  const environment =
+    process.env.SIMHUB_ENV ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV;
 
   if (!access.ok) {
     return null;
@@ -18,7 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <DashboardAuthProvider auth={access.auth}>
       <TooltipProvider>
         <SidebarProvider>
-          <AppSidebar auth={access.auth} />
+          <AppSidebar auth={access.auth} environment={environment} />
           <SidebarInset>
             <DashboardTopbar />
             <main className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
