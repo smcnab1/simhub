@@ -821,6 +821,10 @@ export const upsertUser = mutation({
         throw new Error("User not found");
       }
 
+      if (user.role === "Developer") {
+        throw new Error("Developer users can only be managed by bootstrap tooling");
+      }
+
       await ctx.db.patch(args.userId, payload);
       return args.userId;
     }
@@ -853,6 +857,10 @@ export const deleteUser = mutation({
 
     if (!user || user.tenantId !== tenant._id) {
       throw new Error("User not found");
+    }
+
+    if (user.role === "Developer") {
+      throw new Error("Developer users can only be managed by bootstrap tooling");
     }
 
     await ctx.db.delete(args.userId);

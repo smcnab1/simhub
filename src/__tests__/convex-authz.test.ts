@@ -17,7 +17,7 @@ type User = {
   tenantId: string;
   workosUserId: string;
   email: string;
-  role: "Admin" | "Staff" | "Requester";
+  role: "Developer" | "Admin" | "Staff" | "Requester";
 };
 
 function createCtx({
@@ -35,7 +35,10 @@ function createCtx({
     },
     db: {
       query(table: "tenants" | "users") {
+        const allRows = () => (table === "tenants" ? tenants : users);
+
         return {
+          collect: async () => allRows(),
           withIndex(
             index: string,
             buildQuery: (q: {
@@ -261,6 +264,37 @@ describe("Convex tenant authz helpers", () => {
     ).rejects.toSatisfy((error: unknown) => {
       expectConvexCode(error, "insufficient_role");
       return true;
+    });
+  });
+
+  it("allows developer users to administer any tenant", async () => {
+    const otherTenant = {
+      _id: "tenant_2",
+      slug: "other",
+      workosOrganizationId: "org_other",
+    };
+    const ctx = createCtx({
+      identity: { subject: "dev_123", email: "dev@example.com" },
+      tenants: [tenant, otherTenant],
+      users: [
+        {
+          _id: "user_dev",
+          tenantId: tenant._id,
+          workosUserId: "dev_123",
+          email: "dev@example.com",
+          role: "Developer",
+        },
+      ],
+    });
+
+    await expect(
+      requireAdmin(ctx as never, "other", {
+        workosUserId: "dev_123",
+        email: "dev@example.com",
+      })
+    ).resolves.toMatchObject({
+      tenant: otherTenant,
+      user: { _id: "user_dev", role: "Developer" },
     });
   });
 });

@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "convex:dev": "convex dev"
+    "convex:dev": "convex dev",
+    "bootstrap": "node scripts/simhub-bootstrap.mjs bootstrap",
+    "seed": "node scripts/simhub-bootstrap.mjs seed",
+    "reset:dev": "node scripts/simhub-bootstrap.mjs reset:dev"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

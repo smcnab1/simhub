@@ -4,7 +4,7 @@ import { ConvexError, v } from "convex/values";
 
 type Ctx = QueryCtx | MutationCtx;
 
-export type TenantRole = "Admin" | "Staff" | "Requester";
+export type TenantRole = "Developer" | "Admin" | "Staff" | "Requester";
 export type AuthzFailureCode =
   | "unauthenticated"
   | "tenant_not_found"
@@ -15,7 +15,12 @@ export const authContextValidator = v.object({
   tenantSlug: v.optional(v.string()),
   tenantName: v.optional(v.string()),
   role: v.optional(
-    v.union(v.literal("Admin"), v.literal("Staff"), v.literal("Requester"))
+    v.union(
+      v.literal("Developer"),
+      v.literal("Admin"),
+      v.literal("Staff"),
+      v.literal("Requester")
+    )
   ),
   memberships: v.optional(
     v.array(
@@ -23,6 +28,7 @@ export const authContextValidator = v.object({
         tenantName: v.string(),
         tenantSlug: v.string(),
         role: v.union(
+          v.literal("Developer"),
           v.literal("Admin"),
           v.literal("Staff"),
           v.literal("Requester")
@@ -49,7 +55,8 @@ export type ConvexAuthContext = {
   workosOrganizationId?: string;
 };
 
-const STAFF_ROLES = new Set<TenantRole>(["Admin", "Staff"]);
+const STAFF_ROLES = new Set<TenantRole>(["Developer", "Admin", "Staff"]);
+const ADMIN_ROLES = new Set<TenantRole>(["Developer", "Admin"]);
 
 function fail(code: AuthzFailureCode, message: string): never {
   throw new ConvexError({ code, message });
@@ -122,7 +129,7 @@ export async function tenantBySlugOrWorkOSOrganization(
 
 async function tenantUsers(ctx: Ctx, tenantId: Doc<"tenants">["_id"]) {
   const byRole = await Promise.all(
-    (["Admin", "Staff", "Requester"] as const).map((role) =>
+    (["Developer", "Admin", "Staff", "Requester"] as const).map((role) =>
       ctx.db
         .query("users")
         .withIndex("by_tenant_role", (q) =>
@@ -192,6 +199,19 @@ export async function userForTenant(
   return null;
 }
 
+async function findDeveloperUserForAuth(ctx: Ctx, auth: ConvexAuthContext) {
+  const tenants = await ctx.db.query("tenants").collect();
+
+  for (const tenant of tenants) {
+    const user = await userForTenant(ctx, tenant, auth);
+    if (user?.role === "Developer") {
+      return user;
+    }
+  }
+
+  return null;
+}
+
 export async function membershipsForAuth(ctx: Ctx, auth: ConvexAuthContext) {
   const workosUserId = workosUserIdFromAuth(auth);
   const email = emailFromAuth(auth);
@@ -201,6 +221,17 @@ export async function membershipsForAuth(ctx: Ctx, auth: ConvexAuthContext) {
   }
 
   const tenants = await ctx.db.query("tenants").collect();
+  const developerUser =
+    (
+      await Promise.all(
+        tenants.map((tenant) => userForTenant(ctx, tenant, auth))
+      )
+    ).find((user) => user?.role === "Developer") ?? null;
+
+  if (developerUser) {
+    return tenants.map((tenant) => ({ tenant, user: developerUser }));
+  }
+
   const memberships = await Promise.all(
     tenants.map(async (tenant) => {
       const user = await userForTenant(ctx, tenant, auth);
@@ -233,17 +264,33 @@ export async function requireTenantAccess(
   }
 
   const workosOrganizationId = organizationIdFromAuth(auth);
-  const tenant = await tenantBySlugOrWorkOSOrganization(
-    ctx,
-    tenantSlug,
-    workosOrganizationId
-  );
+  let tenant = await tenantBySlug(ctx, tenantSlug);
+  const developerUser = await findDeveloperUserForAuth(ctx, auth);
+
+  if (
+    tenant &&
+    tenant.workosOrganizationId &&
+    workosOrganizationId &&
+    tenant.workosOrganizationId !== workosOrganizationId &&
+    !developerUser
+  ) {
+    fail(
+      "user_not_linked_to_tenant",
+      "Your WorkOS organization is not linked to this tenant."
+    );
+  }
+
+  tenant =
+    tenant ??
+    (workosOrganizationId
+      ? await tenantByWorkOSOrganizationId(ctx, workosOrganizationId)
+      : null);
 
   if (!tenant) {
     fail("tenant_not_found", "Tenant not found.");
   }
 
-  const user = await userForTenant(ctx, tenant, auth);
+  const user = (await userForTenant(ctx, tenant, auth)) ?? developerUser;
 
   if (!user) {
     fail(
@@ -275,6 +322,6 @@ export async function requireAdmin(
   auth: ConvexAuthContext
 ) {
   const access = await requireTenantAccess(ctx, tenantSlug, auth);
-  requireRole(access.user, new Set(["Admin"]));
+  requireRole(access.user, ADMIN_ROLES);
   return access;
 }

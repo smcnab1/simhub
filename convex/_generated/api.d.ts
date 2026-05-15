@@ -10,6 +10,7 @@
 
 import type * as authz from "../authz.js";
 import type * as bookings from "../bookings.js";
+import type * as bootstrap from "../bootstrap.js";
 import type * as files from "../files.js";
 import type * as notifications from "../notifications.js";
 import type * as tenants from "../tenants.js";
@@ -23,6 +24,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   authz: typeof authz;
   bookings: typeof bookings;
+  bootstrap: typeof bootstrap;
   files: typeof files;
   notifications: typeof notifications;
   tenants: typeof tenants;
