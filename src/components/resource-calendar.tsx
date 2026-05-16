@@ -21,7 +21,7 @@ import { useDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { enGB } from "date-fns/locale"
+import { enGB } from "date-fns/locale";
 import {
   Popover,
   PopoverContent,
@@ -126,14 +126,28 @@ function formatShortDateUK(date: Date) {
 }
 
 function formatTimeUK(date: Date) {
-  return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 // ─── Booking placement helpers ────────────────────────────────────────────────
 
 function getBookingWindow(blocks: BookingBlock[]) {
-  const starts = blocks.map((b) => new Date(b.start).getTime());
-  const ends = blocks.map((b) => new Date(b.end).getTime());
+  const starts = blocks
+    .map((b) => new Date(b.start).getTime())
+    .filter(Number.isFinite);
+
+  const ends = blocks
+    .map((b) => new Date(b.end).getTime())
+    .filter(Number.isFinite);
+
+  if (starts.length === 0 || ends.length === 0) {
+    const fallback = new Date();
+    return { start: fallback, end: fallback };
+  }
+
   return {
     start: new Date(Math.min(...starts)),
     end: new Date(Math.max(...ends)),
@@ -152,11 +166,95 @@ function getGridPlacement(blocks: BookingBlock[]) {
   const { start, end } = getBookingWindow(blocks);
   const startMins = clamp(minutesFromDayStart(start), 0, TOTAL_VISIBLE_MINUTES);
   const endMins = clamp(minutesFromDayStart(end), 0, TOTAL_VISIBLE_MINUTES);
+
   return {
     left: `${(startMins / TOTAL_VISIBLE_MINUTES) * 100}%`,
     width: `${Math.max(((endMins - startMins) / TOTAL_VISIBLE_MINUTES) * 100, 4)}%`,
     timeLabel: `${formatTimeUK(start)}–${formatTimeUK(end)}`,
   };
+}
+
+function getBookingSegments(blocks: BookingBlock[]) {
+  const { start: windowStart, end: windowEnd } = getBookingWindow(blocks);
+  const totalMs = windowEnd.getTime() - windowStart.getTime();
+
+  if (totalMs <= 0) {
+    return [];
+  }
+
+  return blocks
+    .map((block) => {
+      const start = new Date(block.start);
+      const end = new Date(block.end);
+
+      const left =
+        ((start.getTime() - windowStart.getTime()) / totalMs) * 100;
+
+      const width =
+        ((end.getTime() - start.getTime()) / totalMs) * 100;
+
+      return {
+        ...block,
+        left: `${clamp(left, 0, 100)}%`,
+        width: `${clamp(width, 0, 100)}%`,
+      };
+    })
+    .filter((segment) => Number.parseFloat(segment.width) > 0);
+}
+
+function bookingSegmentClass(label: BookingBlock["label"], status: string) {
+  if (status === "Approved") {
+    if (label === "Setup") return "bg-zinc-700";
+    if (label === "Session") return "bg-zinc-950";
+    return "bg-zinc-800";
+  }
+
+  if (label === "Setup") return "bg-zinc-300";
+  if (label === "Session") return "bg-zinc-600";
+  return "bg-zinc-400";
+}
+
+function bookingChipClass(status: string) {
+  if (status === "Approved") {
+    return "border-zinc-950 text-white shadow-primary/20";
+  }
+
+  return "border-border text-foreground shadow-foreground/10";
+}
+
+function bookingTimeLabel(blocks: BookingBlock[]) {
+  const session = blocks.find((block) => block.label === "Session");
+
+  if (session) {
+    return `${formatTimeUK(new Date(session.start))}–${formatTimeUK(
+      new Date(session.end)
+    )}`;
+  }
+
+  const { start, end } = getBookingWindow(blocks);
+  return `${formatTimeUK(start)}–${formatTimeUK(end)}`;
+}
+
+function bookingOverlapsSelectedDate(
+  request: CalendarRequest,
+  selectedDateString: string,
+  tenantTimezone: string
+) {
+  return request.blocks.some((block) => {
+    const blockStartDate = localDateString(
+      block.start,
+      request.timezone ?? tenantTimezone
+    );
+    const blockEndDate = localDateString(
+      block.end,
+      request.timezone ?? tenantTimezone
+    );
+
+    return (
+      blockStartDate === selectedDateString ||
+      blockEndDate === selectedDateString
+    );
+  });
 }
 
 // ─── Booking/room helpers ─────────────────────────────────────────────────────
@@ -182,13 +280,6 @@ function isUnallocated(request: CalendarRequest) {
   return ids.size === 0;
 }
 
-function bookingChipClass(status: string) {
-  if (status === "Approved") {
-    return "border-primary bg-primary text-primary-foreground shadow-primary/20";
-  }
-  return "border-border bg-muted text-foreground shadow-foreground/10";
-}
-
 function blockedTimeAffectsRoom(blocked: CalendarBlockedTime, room: CalendarRoom) {
   switch (blocked.scope) {
     case "Tenant":
@@ -196,8 +287,10 @@ function blockedTimeAffectsRoom(blocked: CalendarBlockedTime, room: CalendarRoom
     case "Campus":
       return room.campusId === blocked.campusId;
     case "RoomType":
-      return room.roomTypeId === blocked.roomTypeId || 
-             room.roomType?.name === blocked.roomTypeName;
+      return (
+        room.roomTypeId === blocked.roomTypeId ||
+        room.roomType?.name === blocked.roomTypeName
+      );
     case "Room":
       return room._id === blocked.roomId;
     default:
@@ -231,7 +324,6 @@ function FilterToggle({
   );
 }
 
-// Campus header row (collapsed or expanded toggle)
 function CampusHeaderRow({
   campusName,
   rooms,
@@ -254,12 +346,15 @@ function CampusHeaderRow({
   const campusBookings = bookingsForDay.filter((req) =>
     rooms.some((room) => requestUsesRoom(req, room._id))
   );
-  const pendingCount = campusBookings.filter((b) => b.status === "Pending").length;
-  const approvedCount = campusBookings.filter((b) => b.status === "Approved").length;
+  const pendingCount = campusBookings.filter(
+    (b) => b.status === "Pending"
+  ).length;
+  const approvedCount = campusBookings.filter(
+    (b) => b.status === "Approved"
+  ).length;
 
   return (
     <div className="contents" role="rowgroup">
-      {/* Campus label cell */}
       <div
         className={`flex items-center justify-between gap-2 border-b border-border px-3 py-2 ${
           isCollapsed ? "bg-muted/70" : "bg-muted/40"
@@ -287,11 +382,14 @@ function CampusHeaderRow({
           aria-label={isVisible ? `Hide ${campusName}` : `Show ${campusName}`}
           className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-muted-foreground"
         >
-          {isVisible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+          {isVisible ? (
+            <Eye className="size-3.5" />
+          ) : (
+            <EyeOff className="size-3.5" />
+          )}
         </button>
       </div>
 
-      {/* Campus summary timeline (shown when collapsed) */}
       <div
         className={`relative border-b border-l border-border px-3 py-2 ${
           isCollapsed ? "bg-muted/70" : "bg-muted/40"
@@ -305,7 +403,10 @@ function CampusHeaderRow({
           {campusBookings.length > 0 ? (
             <>
               <span className="text-muted-foreground">·</span>
-              <span>{campusBookings.length} booking{campusBookings.length !== 1 ? "s" : ""}</span>
+              <span>
+                {campusBookings.length} booking
+                {campusBookings.length !== 1 ? "s" : ""}
+              </span>
               {pendingCount > 0 && (
                 <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">
                   {pendingCount} pending
@@ -326,7 +427,6 @@ function CampusHeaderRow({
   );
 }
 
-// Individual room row
 function RoomRow({
   room,
   bookings,
@@ -338,13 +438,16 @@ function RoomRow({
   blockedTimes: CalendarBlockedTime[];
   hourCount: number;
 }) {
-  // Filter blocked times that affect this room
-  const relevantBlocks = blockedTimes.filter((bt) => blockedTimeAffectsRoom(bt, room));
+  const relevantBlocks = blockedTimes.filter((bt) =>
+    blockedTimeAffectsRoom(bt, room)
+  );
 
   return (
     <div className="contents" role="row">
-      {/* Room label */}
-      <div className="flex flex-col justify-center border-b border-border px-3 py-2" role="rowheader">
+      <div
+        className="flex flex-col justify-center border-b border-border px-3 py-2"
+        role="rowheader"
+      >
         <p className="text-sm font-semibold leading-tight text-foreground">
           {room.code}
         </p>
@@ -355,13 +458,11 @@ function RoomRow({
         </p>
       </div>
 
-      {/* Timeline */}
       <div
-        className="relative min-h-[4rem] border-b border-l border-border bg-card/40"
+        className="relative min-h-16 border-b border-l border-border bg-card/40"
         style={{ gridColumn: `span ${hourCount}` }}
         role="cell"
       >
-        {/* Hour gridlines */}
         <div
           className="pointer-events-none absolute inset-0 grid"
           style={{ gridTemplateColumns: `repeat(${hourCount}, 1fr)` }}
@@ -371,9 +472,10 @@ function RoomRow({
           ))}
         </div>
 
-        {/* Blocked time backgrounds */}
         {relevantBlocks.map((blocked) => {
-          const placement = getGridPlacement([{ label: "Session", start: blocked.start, end: blocked.end }]);
+          const placement = getGridPlacement([
+            { label: "Session", start: blocked.start, end: blocked.end },
+          ]);
           return (
             <div
               key={blocked._id}
@@ -387,9 +489,10 @@ function RoomRow({
           );
         })}
 
-        {/* Blocked time chips */}
         {relevantBlocks.map((blocked, idx) => {
-          const placement = getGridPlacement([{ label: "Session", start: blocked.start, end: blocked.end }]);
+          const placement = getGridPlacement([
+            { label: "Session", start: blocked.start, end: blocked.end },
+          ]);
           return (
             <div
               key={`chip-${blocked._id}`}
@@ -407,14 +510,16 @@ function RoomRow({
           );
         })}
 
-        {/* Booking chips */}
         {bookings.map((booking, idx) => {
           const placement = getGridPlacement(booking.blocks);
+          const segments = getBookingSegments(booking.blocks);
+          const sessionTimeLabel = bookingTimeLabel(booking.blocks);
+
           return (
             <a
               key={booking._id}
               href={`/dashboard/requests/${booking._id}`}
-              className={`absolute z-10 overflow-hidden rounded-md border px-1.5 py-0.5 text-xs shadow-sm transition-opacity hover:opacity-90 ${bookingChipClass(
+              className={`absolute z-10 overflow-hidden rounded-md border text-xs shadow-sm transition-opacity hover:opacity-90 ${bookingChipClass(
                 booking.status
               )}`}
               style={{
@@ -422,19 +527,39 @@ function RoomRow({
                 width: placement.width,
                 top: `${6 + idx * 38}px`,
               }}
-              title={`${booking.sessionName} · ${placement.timeLabel} · ${booking.status}`}
+              title={`${booking.sessionName} · Session ${sessionTimeLabel} · Total reserved ${placement.timeLabel} · ${booking.status}`}
+              aria-label={`${booking.sessionName}, session ${sessionTimeLabel}, total reserved ${placement.timeLabel}, ${booking.status}`}
             >
-              <span className="block truncate font-semibold leading-tight">
-                {booking.sessionName}
-              </span>
-              <span className="block truncate leading-tight opacity-80">
-                {placement.timeLabel} · {booking.status}
-              </span>
-              {booking.requesterName ? (
-                <span className="block truncate leading-tight opacity-70">
-                  {booking.requesterName}
+              <div className="absolute inset-0">
+                {segments.map((segment) => (
+                  <span
+                    key={`${booking._id}-${segment.label}-${segment.start}`}
+                    className={`absolute inset-y-0 ${bookingSegmentClass(
+                      segment.label,
+                      booking.status
+                    )}`}
+                    style={{
+                      left: segment.left,
+                      width: segment.width,
+                    }}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+
+              <div className="relative z-10 px-1.5 py-0.5 [text-shadow:0_1px_2px_rgb(0_0_0_/_0.55)]">
+                <span className="block truncate font-semibold leading-tight">
+                  {booking.sessionName}
                 </span>
-              ) : null}
+                <span className="block truncate leading-tight opacity-90">
+                  {sessionTimeLabel} · {booking.status}
+                </span>
+                {booking.requesterName ? (
+                  <span className="block truncate leading-tight opacity-80">
+                    {booking.requesterName}
+                  </span>
+                ) : null}
+              </div>
             </a>
           );
         })}
@@ -443,9 +568,9 @@ function RoomRow({
   );
 }
 
-// Unallocated bookings panel
 function UnallocatedPanel({ bookings }: { bookings: CalendarRequest[] }) {
   if (bookings.length === 0) return null;
+
   return (
     <div className="mb-4 rounded-xl border border-border bg-primary/10 p-4">
       <div className="mb-2 flex items-center gap-2">
@@ -461,7 +586,9 @@ function UnallocatedPanel({ bookings }: { bookings: CalendarRequest[] }) {
             href={`/dashboard/requests/${b._id}`}
             className="inline-flex flex-col rounded-lg border border-border bg-card px-3 py-1.5 text-xs shadow-sm hover:border-ring"
           >
-            <span className="font-semibold text-foreground">{b.sessionName}</span>
+            <span className="font-semibold text-foreground">
+              {b.sessionName}
+            </span>
             <span className="text-muted-foreground">
               {b.requesterName} · <StatusPill status={b.status} />
             </span>
@@ -479,54 +606,49 @@ export function ResourceCalendar() {
     todayPlainDate()
   );
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-
-  // Campus collapse/expand state
   const [collapsedCampusIds, setCollapsedCampusIds] = useState<Set<string>>(
     new Set()
   );
-  // Campus visibility (null = all visible)
   const [hiddenCampusIds, setHiddenCampusIds] = useState<Set<string>>(
     new Set()
   );
   const [hideEmptyCampuses, setHideEmptyCampuses] = useState(false);
-
-  // Filters
   const [showPending, setShowPending] = useState(true);
   const [showApproved, setShowApproved] = useState(true);
   const [roomTypeFilter, setRoomTypeFilter] = useState<string>("all");
-
-  // Block Time dialog state
   const [blockTimeDialogOpen, setBlockTimeDialogOpen] = useState(false);
 
-  // Data
   const auth = useDashboardAuth();
   const tenantSlug = auth.tenantSlug;
+
   const tenant = useQuery(api.tenants.getBySlug, {
     slug: tenantSlug,
   });
+
   const rooms = useQuery(api.tenants.listPrivateRooms, {
     tenantSlug,
     auth,
     activeOnly: true,
   });
+
   const campuses = useQuery(api.tenants.listPrivateCampuses, {
     tenantSlug,
     auth,
     activeOnly: true,
   });
+
   const requests = useQuery(api.bookings.listRequests, {
     tenantSlug,
     auth,
   });
 
-  // Query blocked times for calendar (only when tenant is loaded)
   const blockedTimesRaw = useQuery(
     api.blockedTimes.listBlockedTimesForCalendar,
     tenant?._id
       ? {
           tenantId: tenant._id,
-          rangeStart: new Date(selectedDateString + "T00:00:00").toISOString(),
-          rangeEnd: new Date(selectedDateString + "T23:59:59").toISOString(),
+          rangeStart: new Date(`${selectedDateString}T00:00:00`).toISOString(),
+          rangeEnd: new Date(`${selectedDateString}T23:59:59`).toISOString(),
         }
       : "skip"
   );
@@ -540,53 +662,56 @@ export function ResourceCalendar() {
     rooms === undefined || campuses === undefined || requests === undefined;
 
   const tenantTimezone = tenant?.timezone ?? "Europe/London";
+
   const selectedDate = useMemo(
     () => plainDateToLocalDate(selectedDateString),
     [selectedDateString]
   );
 
-  // All unique room type names for the filter dropdown
   const roomTypeNames = useMemo(() => {
     if (!rooms) return [];
     const names = new Set<string>();
+
     rooms.forEach((r) => {
       if (r.roomType?.name) names.add(r.roomType.name);
     });
+
     return Array.from(names).sort();
   }, [rooms]);
 
-  // Bookings visible on this day (pending/approved + status filter)
   const bookingsForDay = useMemo<CalendarRequest[]>(() => {
     if (!requests) return [];
+
     return (requests as CalendarRequest[]).filter((req) => {
       if (!isVisibleBooking(req)) return false;
       if (!showPending && req.status === "Pending") return false;
       if (!showApproved && req.status === "Approved") return false;
-      return req.blocks.some(
-        (b) =>
-          localDateString(b.start, req.timezone ?? tenantTimezone) ===
-          selectedDateString
+
+      return bookingOverlapsSelectedDate(
+        req,
+        selectedDateString,
+        tenantTimezone
       );
     });
   }, [requests, selectedDateString, showPending, showApproved, tenantTimezone]);
 
-  // Active rooms (with optional room type filter)
   const filteredRooms = useMemo<CalendarRoom[]>(() => {
     if (!rooms) return [];
+
     return (rooms as CalendarRoom[]).filter((r) => {
-      if (roomTypeFilter !== "all" && r.roomType?.name !== roomTypeFilter)
+      if (roomTypeFilter !== "all" && r.roomType?.name !== roomTypeFilter) {
         return false;
+      }
+
       return true;
     });
   }, [rooms, roomTypeFilter]);
 
-  // Group rooms by campus
   const campusGroups = useMemo<CampusGroup[]>(() => {
     if (!campuses || !filteredRooms) return [];
 
     const campusMap = new Map<string, CampusGroup>();
 
-    // Create a group for each known campus
     (campuses as CalendarCampus[]).forEach((campus) => {
       campusMap.set(campus._id, {
         campusId: campus._id,
@@ -595,48 +720,48 @@ export function ResourceCalendar() {
       });
     });
 
-    // Unassigned group
     campusMap.set(UNASSIGNED_CAMPUS_ID, {
       campusId: UNASSIGNED_CAMPUS_ID,
       campusName: "Unassigned / No campus",
       rooms: [],
     });
 
-    // Assign rooms to groups
     filteredRooms.forEach((room) => {
       const key = room.campusId ?? UNASSIGNED_CAMPUS_ID;
+
       if (!campusMap.has(key)) {
-        // Campus exists in room data but not in campus list — add it
         campusMap.set(key, {
           campusId: key,
           campusName: room.campus?.name ?? "Unknown Campus",
           rooms: [],
         });
       }
+
       campusMap.get(key)!.rooms.push(room);
     });
 
-    // Sort rooms within each group by code
     campusMap.forEach((group) => {
       group.rooms.sort((a, b) => a.code.localeCompare(b.code));
     });
 
-    // Convert to array, filter out empty unassigned group unless it has rooms
     return Array.from(campusMap.values()).filter((g) => g.rooms.length > 0);
   }, [campuses, filteredRooms]);
 
-  // Unallocated bookings (no room assigned at all)
   const unallocatedBookings = useMemo(
     () => bookingsForDay.filter(isUnallocated),
     [bookingsForDay]
   );
 
-  // Campus action helpers
   function toggleCollapse(campusId: string) {
     setCollapsedCampusIds((prev) => {
       const next = new Set(prev);
-      if (next.has(campusId)) next.delete(campusId);
-      else next.add(campusId);
+
+      if (next.has(campusId)) {
+        next.delete(campusId);
+      } else {
+        next.add(campusId);
+      }
+
       return next;
     });
   }
@@ -652,8 +777,13 @@ export function ResourceCalendar() {
   function toggleCampusVisibility(campusId: string) {
     setHiddenCampusIds((prev) => {
       const next = new Set(prev);
-      if (next.has(campusId)) next.delete(campusId);
-      else next.add(campusId);
+
+      if (next.has(campusId)) {
+        next.delete(campusId);
+      } else {
+        next.add(campusId);
+      }
+
       return next;
     });
   }
@@ -663,16 +793,18 @@ export function ResourceCalendar() {
     setHideEmptyCampuses(false);
   }
 
-  // Visible groups after applying campus hide filters
   const visibleGroups = useMemo(() => {
     return campusGroups.filter((g) => {
       if (hiddenCampusIds.has(g.campusId)) return false;
+
       if (hideEmptyCampuses) {
         const campusHasBooking = bookingsForDay.some((req) =>
           g.rooms.some((r) => requestUsesRoom(req, r._id))
         );
+
         if (!campusHasBooking) return false;
       }
+
       return true;
     });
   }, [campusGroups, hiddenCampusIds, hideEmptyCampuses, bookingsForDay]);
@@ -706,11 +838,8 @@ export function ResourceCalendar() {
       />
 
       <Card>
-        {/* ── Compact toolbar ──────────────────────────────────────────── */}
         <div className="mb-5 flex flex-col gap-4">
-          {/* Row 1: Date navigation (sleek) */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* Left: prev/next and date display */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -723,16 +852,13 @@ export function ResourceCalendar() {
                 <ChevronLeft className="size-4" />
               </button>
 
-              {/* Date picker trigger */}
               <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                 <PopoverTrigger
                   aria-label="Select date"
                   className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
                   <CalendarIcon className="size-4 text-primary" />
-                  <span>
-                    {formatShortDateUK(selectedDate)}
-                  </span>
+                  <span>{formatShortDateUK(selectedDate)}</span>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-auto p-2">
                   <Calendar
@@ -785,13 +911,14 @@ export function ResourceCalendar() {
               </button>
             </div>
 
-            {/* Center: Full date display */}
             <div className="hidden text-center md:block">
               <h2 className="text-lg font-bold text-foreground">
                 {formatDateUK(selectedDate)}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {bookingsForDay.length} booking{bookingsForDay.length !== 1 ? "s" : ""} · {totalRooms} room{totalRooms !== 1 ? "s" : ""}
+                {bookingsForDay.length} booking
+                {bookingsForDay.length !== 1 ? "s" : ""} · {totalRooms} room
+                {totalRooms !== 1 ? "s" : ""}
                 {unallocatedBookings.length > 0 && (
                   <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                     <AlertTriangle className="size-3" />
@@ -801,17 +928,20 @@ export function ResourceCalendar() {
               </p>
             </div>
 
-            {/* Right: Filters */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* Status filters */}
-              <FilterToggle active={showPending} onClick={() => setShowPending((v) => !v)}>
+              <FilterToggle
+                active={showPending}
+                onClick={() => setShowPending((v) => !v)}
+              >
                 Pending
               </FilterToggle>
-              <FilterToggle active={showApproved} onClick={() => setShowApproved((v) => !v)}>
+              <FilterToggle
+                active={showApproved}
+                onClick={() => setShowApproved((v) => !v)}
+              >
                 Approved
               </FilterToggle>
 
-              {/* Room type filter */}
               {roomTypeNames.length > 0 && (
                 <div className="relative">
                   <select
@@ -832,9 +962,10 @@ export function ResourceCalendar() {
             </div>
           </div>
 
-          {/* Row 2: Campus controls (compact) */}
           <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
-            <span className="text-xs font-medium text-muted-foreground">Campuses:</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Campuses:
+            </span>
             <button
               type="button"
               onClick={expandAll}
@@ -865,17 +996,18 @@ export function ResourceCalendar() {
               </button>
             )}
 
-            {/* Mobile date summary */}
             <div className="ml-auto text-right md:hidden">
-              <p className="text-sm font-bold text-foreground">{formatShortDateUK(selectedDate)}</p>
+              <p className="text-sm font-bold text-foreground">
+                {formatShortDateUK(selectedDate)}
+              </p>
               <p className="text-xs text-muted-foreground">
-                {bookingsForDay.length} booking{bookingsForDay.length !== 1 ? "s" : ""}
+                {bookingsForDay.length} booking
+                {bookingsForDay.length !== 1 ? "s" : ""}
               </p>
             </div>
           </div>
         </div>
 
-        {/* ── Loading/empty states ─────────────────────────────────────── */}
         {isLoading ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/40 p-6 text-center text-sm text-muted-foreground">
             Loading rooms and bookings…
@@ -888,10 +1020,8 @@ export function ResourceCalendar() {
           </div>
         ) : (
           <>
-            {/* ── Unallocated warning panel ──────────────────────────── */}
             <UnallocatedPanel bookings={unallocatedBookings} />
 
-            {/* ── Calendar grid ─────────────────────────────────────── */}
             <div className="overflow-x-auto">
               <div
                 className="grid"
@@ -902,7 +1032,6 @@ export function ResourceCalendar() {
                 role="grid"
                 aria-label="Resource calendar"
               >
-                {/* Header row: room label + hour headers */}
                 <div
                   className="border-b border-border bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground"
                   role="columnheader"
@@ -919,7 +1048,6 @@ export function ResourceCalendar() {
                   </div>
                 ))}
 
-                {/* Campus groups */}
                 {visibleGroups.map((group) => {
                   const isCollapsed = collapsedCampusIds.has(group.campusId);
                   const isVisible = !hiddenCampusIds.has(group.campusId);
@@ -944,6 +1072,7 @@ export function ResourceCalendar() {
                           const roomBookings = bookingsForDay.filter((req) =>
                             requestUsesRoom(req, room._id)
                           );
+
                           return (
                             <RoomRow
                               key={room._id}
@@ -958,7 +1087,6 @@ export function ResourceCalendar() {
                   );
                 })}
 
-                {/* No visible campuses fallback */}
                 {visibleGroups.length === 0 && (
                   <div
                     className="col-span-full p-6 text-center text-sm text-muted-foreground"
@@ -978,16 +1106,19 @@ export function ResourceCalendar() {
               </div>
             </div>
 
-            {/* ── Legend ───────────────────────────────────────────────── */}
             <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span className="font-medium text-muted-foreground">Legend:</span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-foreground">
                 <span className="size-2 rounded-full bg-muted-foreground" />
                 Pending
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary px-3 py-1 text-primary-foreground">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-950 bg-zinc-950 px-3 py-1 text-white">
                 <span className="size-2 rounded-full bg-card" />
-                Approved
+                Approved session
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-700 px-3 py-1 text-white">
+                <span className="size-2 rounded-full bg-card" />
+                Setup / cleanup
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-primary/10 px-3 py-1 text-primary">
                 <AlertTriangle className="size-3" />
@@ -998,14 +1129,14 @@ export function ResourceCalendar() {
                 Blocked
               </span>
               <span className="ml-auto flex items-center gap-1 text-muted-foreground">
-                <ChevronsUpDown className="size-3" /> Click campus header to expand/collapse
+                <ChevronsUpDown className="size-3" /> Click campus header to
+                expand/collapse
               </span>
             </div>
           </>
         )}
       </Card>
 
-      {/* Block Time Dialog */}
       {tenant?._id && (
         <BlockedTimeDialog
           tenantId={tenant._id}
