@@ -1,17 +1,1075 @@
 import { v } from "convex/values";
-import { action, mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
+import { action, internalQuery, mutation, query } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
-import { requireStaff, tenantBySlug } from "./authz";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import {
+  authContextValidator,
+  requireStaff,
+  requireTenantAccess,
+  tenantBySlug,
+  type ConvexAuthContext,
+} from "./authz";
+import {
+  actorFromUser,
+  compactDiff,
+  recordAuditEvent,
+  type AuditActorSnapshot,
+} from "./audit";
+import {
+  evaluateBookingNoticeWindow,
+  bookingBlocksFromSessionWindow,
+  roomTypeBufferMinutes,
+  sessionBookingRange,
+  validateBookingBlocks,
+  validateBookingWithinStaffHours,
+  validateSessionWithinOpeningHours,
+  validateRoomSelectionState,
+  validateMaxBookingDuration,
+  type BookingNoticeEvaluation,
+} from "../src/lib/booking-logic";
+import {
+  autoAllocateRooms,
+  checkAvailabilityConflicts,
+  type AvailabilityCheckResult,
+  type AvailabilityCheckInput,
+} from "../src/lib/conflict-engine";
+import { campusIsActive } from "../src/lib/campus";
 
 async function withAssignedRooms(ctx: QueryCtx, request: Doc<"bookingRequests">) {
   const rooms = await Promise.all(request.assignedRoomIds.map((roomId: Id<"rooms">) => ctx.db.get(roomId)));
   const assignedRooms = rooms.filter((room): room is Doc<"rooms"> => room !== null);
+  const allocationUpdatedBy = request.allocationUpdatedByUserId
+    ? await ctx.db.get(request.allocationUpdatedByUserId)
+    : null;
+  const requestedRooms = await Promise.all(
+    (request.requestedRoomIds ?? []).map((roomId) => ctx.db.get(roomId))
+  );
+  const roomTypeRequestDetails = await Promise.all(
+    request.roomTypeRequests.map(async (roomTypeRequest) => {
+      const roomType = await ctx.db.get(roomTypeRequest.roomTypeId);
+
+      return {
+        ...roomTypeRequest,
+        roomTypeName: roomType?.name ?? "Unknown room type",
+        defaultCapacity: roomType?.defaultCapacity ?? 0,
+      };
+    })
+  );
+
   return {
     ...request,
     assignedRooms: assignedRooms.map((room) => ({ _id: room._id, code: room.code, name: room.name })),
+    allocationUpdatedBy: allocationUpdatedBy
+      ? {
+          _id: allocationUpdatedBy._id,
+          name: allocationUpdatedBy.name,
+          email: allocationUpdatedBy.email,
+          role: allocationUpdatedBy.role,
+        }
+      : null,
+    requestedRooms: requestedRooms
+      .filter((room): room is Doc<"rooms"> => room !== null)
+      .map((room) => ({
+        _id: room._id,
+        code: room.code,
+        name: room.name,
+        capacity: room.capacity,
+      })),
+    roomTypeRequestDetails,
   };
+}
+
+async function toPublicEvent(ctx: QueryCtx, request: Doc<"bookingRequests">) {
+  const rooms = await Promise.all(
+    request.assignedRoomIds.map((roomId: Id<"rooms">) => ctx.db.get(roomId))
+  );
+
+  return {
+    _id: request._id,
+    sessionName: request.sessionName,
+    timezone: request.timezone,
+    blocks: request.blocks,
+    assignedRooms: rooms
+      .filter((room): room is Doc<"rooms"> => room !== null)
+      .map((room) => ({ code: room.code, name: room.name })),
+  };
+}
+
+function bookingEndsInFuture(request: Doc<"bookingRequests">) {
+  const latestEnd = Math.max(...request.blocks.map((block) => Date.parse(block.end)));
+  return Number.isFinite(latestEnd) && latestEnd > Date.now();
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function formatDateTimeForNotification(value: string, timezone: string) {
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: timezone,
+  }).format(date);
+}
+
+function formatTimeForNotification(value: string, timezone: string) {
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: timezone,
+  }).format(date);
+}
+
+function formatRequestWindow(blocks: Array<{ start: string; end: string }>, timezone: string) {
+  const starts = blocks.map((block) => Date.parse(block.start));
+  const ends = blocks.map((block) => Date.parse(block.end));
+  const earliestStart = Math.min(...starts);
+  const latestEnd = Math.max(...ends);
+
+  if (!Number.isFinite(earliestStart) || !Number.isFinite(latestEnd)) {
+    return "invalid requested time";
+  }
+
+  return `${formatDateTimeForNotification(new Date(earliestStart).toISOString(), timezone)} to ${formatTimeForNotification(new Date(latestEnd).toISOString(), timezone)}`;
+}
+
+function bookingContactEmails(request: Doc<"bookingRequests">) {
+  return Array.from(
+    new Set([request.requesterEmail, ...request.ccEmails].map(normalizeEmail))
+  );
+}
+
+async function emailBookingPayload(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<"bookingRequests">,
+) {
+  const [requestedRooms, roomTypeRequestDetails] = await Promise.all([
+    Promise.all(
+      (request.requestedRoomIds ?? []).map((roomId) => ctx.db.get(roomId))
+    ),
+    Promise.all(
+      request.roomTypeRequests.map(async (roomTypeRequest) => {
+        const roomType = await ctx.db.get(roomTypeRequest.roomTypeId);
+
+        return {
+          quantity: roomTypeRequest.quantity,
+          roomTypeName: roomType?.name ?? "Unknown room type",
+        };
+      })
+    ),
+  ]);
+
+  return {
+    id: String(request._id),
+    sessionName: request.sessionName,
+    timezone: request.timezone,
+    blocks: request.blocks,
+    requestedRooms: requestedRooms
+      .filter((room): room is Doc<"rooms"> => room !== null)
+      .map((room) => ({
+        name: room.name,
+        code: room.code,
+      })),
+    roomTypeRequests: roomTypeRequestDetails,
+  };
+}
+
+async function scheduleNewRequestEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+    to: string[];
+  }
+) {
+  try {
+    await ctx.scheduler.runAfter(0, internal.email.sendNewRequestEmail, {
+      tenantName: args.tenant.name,
+      to: args.to,
+      booking: await emailBookingPayload(ctx, args.request),
+    });
+  } catch (error) {
+    console.error("[email] failed to schedule new request email", {
+      error,
+      requestId: String(args.request._id),
+      tenantId: String(args.tenant._id),
+    });
+  }
+}
+
+async function scheduleAdminNewRequestEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+  }
+) {
+  if (args.tenant.notificationEmailsEnabled === false) {
+    return;
+  }
+
+  await scheduleNewRequestEmail(ctx, {
+    tenant: args.tenant,
+    request: args.request,
+    to: args.tenant.notificationEmails,
+  });
+}
+
+async function scheduleStatusUpdateEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+    status: Doc<"bookingRequests">["status"];
+    reason?: string;
+  }
+) {
+  try {
+    await ctx.scheduler.runAfter(0, internal.email.sendStatusUpdateEmail, {
+      to: bookingContactEmails(args.request),
+      tenantName: args.tenant.name,
+      booking: await emailBookingPayload(ctx, args.request),
+      status: args.status,
+      reason: args.reason,
+    });
+  } catch (error) {
+    console.error("[email] failed to schedule status update email", {
+      error,
+      requestId: String(args.request._id),
+      tenantId: String(args.tenant._id),
+      status: args.status,
+    });
+  }
+}
+
+async function scheduleCommentAddedEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+  }
+) {
+  try {
+    await ctx.scheduler.runAfter(0, internal.email.sendCommentAddedEmail, {
+      to: bookingContactEmails(args.request),
+      tenantName: args.tenant.name,
+      booking: await emailBookingPayload(ctx, args.request),
+    });
+  } catch (error) {
+    console.error("[email] failed to schedule comment email", {
+      error,
+      requestId: String(args.request._id),
+      tenantId: String(args.tenant._id),
+    });
+  }
+}
+
+async function scheduleBookingUpdatedEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+    changeSummary: string;
+  }
+) {
+  try {
+    await ctx.scheduler.runAfter(0, internal.email.sendBookingUpdatedEmail, {
+      to: bookingContactEmails(args.request),
+      tenantName: args.tenant.name,
+      booking: await emailBookingPayload(ctx, args.request),
+      changeSummary: args.changeSummary,
+    });
+  } catch (error) {
+    console.error("[email] failed to schedule booking update email", {
+      error,
+      requestId: String(args.request._id),
+      tenantId: String(args.tenant._id),
+    });
+  }
+}
+
+type NotificationType =
+  | "NewRequest"
+  | "BookingUpdated"
+  | "StatusChanged"
+  | "AllocationChanged"
+  | "CommentAdded";
+
+async function createStaffNotification(
+  ctx: MutationCtx,
+  args: {
+    tenantId: Id<"tenants">;
+    requestId: Id<"bookingRequests">;
+    type: NotificationType;
+    title: string;
+    message: string;
+    createdAt: number;
+  }
+) {
+  await ctx.db.insert("notifications", {
+    tenantId: args.tenantId,
+    requestId: args.requestId,
+    type: args.type,
+    title: args.title,
+    message: args.message,
+    targetRoles: ["Developer", "Admin", "Staff"],
+    seen: false,
+    createdAt: args.createdAt,
+  });
+}
+
+async function createRequesterNotification(
+  ctx: MutationCtx,
+  args: {
+    request: Doc<"bookingRequests">;
+    type: NotificationType;
+    title: string;
+    message: string;
+    createdAt: number;
+  }
+) {
+  const targetEmails = bookingContactEmails(args.request);
+
+  if (targetEmails.length === 0 && !args.request.requesterUserId) {
+    return;
+  }
+
+  await ctx.db.insert("notifications", {
+    tenantId: args.request.tenantId,
+    requestId: args.request._id,
+    userId: args.request.requesterUserId,
+    targetEmails,
+    type: args.type,
+    title: args.title,
+    message: args.message,
+    seen: false,
+    createdAt: args.createdAt,
+  });
+}
+
+async function requesterUserByEmail(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  email: string
+) {
+  const normalizedEmail = normalizeEmail(email);
+  const exact = await ctx.db
+    .query("users")
+    .withIndex("by_tenant_email", (q) =>
+      q.eq("tenantId", tenantId).eq("email", normalizedEmail)
+    )
+    .unique();
+
+  if (exact) return exact;
+
+  const users = await ctx.db
+    .query("users")
+    .withIndex("by_tenant_role", (q) =>
+      q.eq("tenantId", tenantId).eq("role", "Requester")
+    )
+    .collect();
+
+  return users.find((user) => normalizeEmail(user.email) === normalizedEmail) ?? null;
+}
+
+async function validateCustomInputs(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  customInputs: Array<{ fieldId: string; label: string; value: unknown }>
+) {
+  const formConfig = await ctx.db
+    .query("formConfigs")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .unique();
+
+  if (!formConfig) return;
+
+  const inputByFieldId = new Map(customInputs.map((input) => [input.fieldId, input]));
+
+  for (const field of formConfig.fields) {
+    if (field.type === "divider" || field.type === "note") {
+      continue;
+    }
+
+    const input = inputByFieldId.get(field.id);
+    const value = input?.value;
+    const missing =
+      value === null ||
+      value === undefined ||
+      (typeof value === "string" && value.trim() === "") ||
+      (Array.isArray(value) && value.length === 0);
+
+    if (field.required && missing) {
+      throw new Error(`${field.label} is required.`);
+    }
+
+    if (missing) {
+      continue;
+    }
+
+    if ((field.type === "text" || field.type === "textarea") && field.maxLength) {
+      if (typeof value !== "string" || value.length > field.maxLength) {
+        throw new Error(`${field.label} must be ${field.maxLength} characters or fewer.`);
+      }
+    }
+
+    if (field.type === "number" && Number.isNaN(Number(value))) {
+      throw new Error(`${field.label} must be a number.`);
+    }
+
+    if (field.type === "radio" || field.type === "select") {
+      if (typeof value !== "string" || !(field.options ?? []).includes(value)) {
+        throw new Error(`${field.label} has an invalid option.`);
+      }
+    }
+
+    if (field.type === "checkboxGroup") {
+      const values = Array.isArray(value) ? value : [];
+      if (
+        values.some(
+          (item) => typeof item !== "string" || !(field.options ?? []).includes(item)
+        )
+      ) {
+        throw new Error(`${field.label} has an invalid option.`);
+      }
+    }
+  }
+}
+
+function validateRequesterDetails(args: {
+  requesterName: string;
+  requesterEmail: string;
+  sessionName: string;
+  attendeeCount: number;
+  details: string;
+  ccEmails: string[];
+}) {
+  if (!args.requesterName.trim()) {
+    return "Requester name is required.";
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.requesterEmail.trim())) {
+    return "A valid requester email is required.";
+  }
+
+  if (!args.sessionName.trim()) {
+    return "Session name is required.";
+  }
+
+  if (!Number.isInteger(args.attendeeCount) || args.attendeeCount < 1) {
+    return "Attendee count must be a whole number greater than zero.";
+  }
+
+  if (!args.details.trim()) {
+    return "Session details are required.";
+  }
+
+  if (args.ccEmails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    return "CC emails must be valid email addresses.";
+  }
+
+  return null;
+}
+
+function publicRoomType(roomType: Doc<"roomTypes">) {
+  return {
+    id: roomType._id,
+    name: roomType.name,
+    campusId: roomType.campusId,
+    active: roomType.active,
+    maxBookingDurationMinutes:
+      roomType.maxBookingDurationMinutes ??
+      (roomType.maxDurationHours !== undefined
+        ? roomType.maxDurationHours * 60
+        : undefined),
+    standardSetupMinutes: roomType.standardSetupMinutes ?? 30,
+    standardCleanupMinutes: roomType.standardCleanupMinutes ?? 30,
+  };
+}
+
+function tenantBookingNoticeRules(tenant: Doc<"tenants">) {
+  return {
+    minimumAdvanceBookingDays: tenant.minimumAdvanceBookingDays,
+    maximumAdvanceBookingDays: tenant.maximumAdvanceBookingDays,
+    violationMode: tenant.bookingNoticeViolationMode ?? "Block",
+  };
+}
+
+function authCanOverrideBookingNotice(role?: string) {
+  return role === "Developer" || role === "Admin" || role === "Staff";
+}
+
+function requesterActorSnapshot(args: {
+  requesterName: string;
+  requesterEmail: string;
+  requesterUserId?: Id<"users">;
+}): AuditActorSnapshot {
+  return {
+    userId: args.requesterUserId,
+    name: args.requesterName.trim(),
+    email: normalizeEmail(args.requesterEmail),
+  };
+}
+
+function statusEventType(status: Doc<"bookingRequests">["status"]) {
+  if (status === "Approved") return "booking.approved" as const;
+  if (status === "Declined") return "booking.declined" as const;
+  if (status === "Cancelled") return "booking.cancelled" as const;
+  return "booking.status_changed" as const;
+}
+
+function bookingHasEnded(request: Doc<"bookingRequests">) {
+  const latestEnd = Math.max(...request.blocks.map((block) => Date.parse(block.end)));
+  return Number.isFinite(latestEnd) && latestEnd <= Date.now();
+}
+
+function requiresRoomSafetyCheck(status: Doc<"bookingRequests">["status"]) {
+  return status === "Approved" || status === "Confirmed";
+}
+
+function isStaffOverrideRole(role?: string) {
+  return role === "Developer" || role === "Admin" || role === "Staff";
+}
+
+function reasonOrUndefined(reason?: string) {
+  const trimmed = reason?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+async function verifiedBookingNoticeOverrideRole(
+  ctx: QueryCtx | MutationCtx,
+  tenantSlug: string,
+  auth?: ConvexAuthContext
+) {
+  if (!authCanOverrideBookingNotice(auth?.role)) {
+    return undefined;
+  }
+
+  try {
+    const { user } = await requireStaff(ctx, tenantSlug, auth);
+    return authCanOverrideBookingNotice(user?.role) ? user?.role : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function availabilityWithNoticeEvaluation(
+  availability: AvailabilityCheckResult,
+  notice: BookingNoticeEvaluation
+): AvailabilityCheckResult {
+  if (notice.violations.length === 0) {
+    return availability;
+  }
+
+  const noticeConflicts = notice.violations.map((violation) => ({
+    type: "booking_notice" as const,
+    severity: notice.canSubmit ? ("warning" as const) : ("likely_unavailable" as const),
+    message: notice.canSubmit
+      ? `${violation.message} Your request will require additional approval.`
+      : violation.message,
+  }));
+  const conflicts = [...availability.conflicts, ...noticeConflicts];
+  const highestSeverity =
+    notice.canSubmit && availability.highestSeverity !== "likely_unavailable"
+      ? availability.highestSeverity ?? "warning"
+      : "likely_unavailable";
+
+  return {
+    ...availability,
+    canSubmit: availability.canSubmit && notice.canSubmit,
+    highestSeverity,
+    summary: notice.canSubmit
+      ? "This request will require additional approval."
+      : notice.violations[0]?.message ?? availability.summary,
+    conflicts,
+  };
+}
+
+async function availabilityResources(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  excludeRequestId?: Id<"bookingRequests">,
+  options?: { includeInactiveRooms?: boolean }
+): Promise<
+  Pick<
+    AvailabilityCheckInput,
+    "rooms" | "roomTypes" | "campuses" | "bookings" | "blockedTimes"
+  >
+> {
+  const [rooms, roomTypes, campuses, approved, confirmed, completed, pending, blockedTimes] =
+    await Promise.all([
+      ctx.db
+        .query("rooms")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+        .collect(),
+      ctx.db
+        .query("roomTypes")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+        .collect(),
+      ctx.db
+        .query("campuses")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+        .collect(),
+      ctx.db
+        .query("bookingRequests")
+        .withIndex("by_tenant_status", (q) =>
+          q.eq("tenantId", tenantId).eq("status", "Approved")
+        )
+        .collect(),
+      ctx.db
+        .query("bookingRequests")
+        .withIndex("by_tenant_status", (q) =>
+          q.eq("tenantId", tenantId).eq("status", "Confirmed")
+        )
+        .collect(),
+      ctx.db
+        .query("bookingRequests")
+        .withIndex("by_tenant_status", (q) =>
+          q.eq("tenantId", tenantId).eq("status", "Completed")
+        )
+        .collect(),
+      ctx.db
+        .query("bookingRequests")
+        .withIndex("by_tenant_status", (q) =>
+          q.eq("tenantId", tenantId).eq("status", "Pending")
+        )
+        .collect(),
+      ctx.db
+        .query("blockedTimes")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+        .collect(),
+    ]);
+  const activeCampusIds = new Set(
+    campuses.filter(campusIsActive).map((campus) => campus._id)
+  );
+  const selectableRooms = rooms.filter(
+    (room) =>
+      (options?.includeInactiveRooms || room.active) &&
+      (!room.campusId || activeCampusIds.has(room.campusId))
+  );
+  const selectableRoomTypes = roomTypes.filter(
+    (roomType) =>
+      roomType.active && (!roomType.campusId || activeCampusIds.has(roomType.campusId))
+  );
+  const visibleBookings = [...approved, ...confirmed, ...completed, ...pending].filter(
+    (request) => request._id !== excludeRequestId
+  );
+
+  return {
+    rooms: selectableRooms.map((room) => ({
+      id: room._id,
+      code: room.code,
+      name: room.name,
+      roomTypeId: room.roomTypeId,
+      campusId: room.campusId,
+      active: room.active,
+    })),
+    roomTypes: selectableRoomTypes.map(publicRoomType),
+    campuses: campuses.map((campus) => ({
+      id: campus._id,
+      name: campus.name,
+      active: campusIsActive(campus),
+    })),
+    bookings: visibleBookings.map((request) => ({
+      id: request._id,
+      status: request.status,
+      blocks: request.blocks,
+      assignedRoomIds: request.assignedRoomIds,
+      requestedRoomIds: request.requestedRoomIds,
+      roomTypeRequests: request.roomTypeRequests,
+    })),
+    blockedTimes: blockedTimes
+      .filter((bt) => (bt.status ?? "Active") === "Active")
+      .map((blockedTime) => ({
+      id: blockedTime._id,
+      roomId: blockedTime.roomId,
+      roomTypeId: blockedTime.roomTypeId,
+      campusId: blockedTime.campusId,
+      start: blockedTime.start,
+      end: blockedTime.end,
+      reason: blockedTime.reason,
+    })),
+  };
+}
+
+async function computeAvailability(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  args: {
+    roomSelectionMode?: "SpecificRooms" | "RoomTypeQuantity";
+    blocks: Array<{ start: string; end: string }>;
+    roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>;
+    requestedRoomIds?: Id<"rooms">[];
+    excludeRequestId?: Id<"bookingRequests">;
+  }
+): Promise<AvailabilityCheckResult> {
+  const resources = await availabilityResources(
+    ctx,
+    tenantId,
+    args.excludeRequestId
+  );
+  const requestedRoomIdSet = new Set<string>(args.requestedRoomIds ?? []);
+  const selectedRooms = args.requestedRoomIds
+    ? resources.rooms.filter((room) => requestedRoomIdSet.has(room.id))
+    : [];
+  const availabilityRoomTypeRequests =
+    args.roomSelectionMode === "SpecificRooms"
+      ? Object.entries(
+          selectedRooms.reduce<Record<string, number>>((counts, room) => {
+            counts[room.roomTypeId] = (counts[room.roomTypeId] ?? 0) + 1;
+            return counts;
+          }, {})
+        ).map(([roomTypeId, quantity]) => ({ roomTypeId, quantity }))
+      : args.roomTypeRequests;
+
+  return checkAvailabilityConflicts({
+    roomSelectionMode: args.roomSelectionMode,
+    blocks: args.blocks,
+    roomTypeRequests: availabilityRoomTypeRequests,
+    requestedRoomIds: args.requestedRoomIds,
+    ...resources,
+  });
+}
+
+async function computeManualAllocationAvailability(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  request: Doc<"bookingRequests">,
+  assignedRoomIds: Id<"rooms">[]
+): Promise<AvailabilityCheckResult> {
+  const resources = await availabilityResources(ctx, tenantId, request._id, {
+    includeInactiveRooms: true,
+  });
+
+  return checkAvailabilityConflicts({
+    roomSelectionMode: "SpecificRooms",
+    blocks: request.blocks,
+    roomTypeRequests: request.roomTypeRequests,
+    requestedRoomIds: assignedRoomIds,
+    ...resources,
+  });
+}
+
+async function validateSpecificRoomRequests(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  blocks: Array<{ start: string; end: string }>,
+  requestedRoomIds: Id<"rooms">[]
+) {
+  const uniqueRoomIds = new Set(requestedRoomIds);
+
+  if (uniqueRoomIds.size !== requestedRoomIds.length) {
+    throw new Error("The same room cannot be requested more than once.");
+  }
+
+  const rooms = await Promise.all(requestedRoomIds.map((roomId) => ctx.db.get(roomId)));
+  const roomTypeCounts = new Map<Id<"roomTypes">, number>();
+
+  for (const room of rooms) {
+    if (!room || room.tenantId !== tenantId || !room.active) {
+      throw new Error("Selected room is no longer available.");
+    }
+
+    if (room.campusId) {
+      const campus = await ctx.db.get(room.campusId);
+
+      if (!campus || campus.tenantId !== tenantId || !campusIsActive(campus)) {
+        throw new Error(`${room.name} (${room.code}) belongs to an inactive campus and cannot be requested.`);
+      }
+    }
+
+    roomTypeCounts.set(room.roomTypeId, (roomTypeCounts.get(room.roomTypeId) ?? 0) + 1);
+  }
+
+  const selectedRoomTypes = await Promise.all(
+    Array.from(roomTypeCounts.keys()).map(async (roomTypeId) => {
+      const roomType = await ctx.db.get(roomTypeId);
+
+      if (!roomType || roomType.tenantId !== tenantId || !roomType.active) {
+        throw new Error("Selected room type is no longer available.");
+      }
+
+      return {
+        id: roomType._id,
+        name: roomType.name,
+        maxBookingDurationMinutes:
+          roomType.maxBookingDurationMinutes ??
+          (roomType.maxDurationHours !== undefined
+            ? roomType.maxDurationHours * 60
+            : undefined),
+        standardSetupMinutes: roomType.standardSetupMinutes ?? 30,
+        standardCleanupMinutes: roomType.standardCleanupMinutes ?? 30,
+      };
+    })
+  );
+  const durationError = validateMaxBookingDuration(
+    blocks,
+    Array.from(roomTypeCounts.entries()).map(([roomTypeId, quantity]) => ({
+      roomTypeId,
+      quantity,
+    })),
+    selectedRoomTypes
+  );
+
+  if (durationError) {
+    throw new Error(durationError);
+  }
+}
+
+async function validateRequesterRoomSelection(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  args: {
+    roomSelectionMode: "SpecificRooms" | "RoomTypeQuantity";
+    blocks: Array<{ start: string; end: string }>;
+    requestedRoomIds?: Id<"rooms">[];
+    roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>;
+  }
+) {
+  const selectionError = validateRoomSelectionState({
+    roomSelectionMode: args.roomSelectionMode,
+    requestedRoomIds: args.requestedRoomIds ?? [],
+    roomTypeRequests: args.roomTypeRequests,
+  });
+
+  if (selectionError) {
+    throw new Error(selectionError);
+  }
+
+  if (args.roomSelectionMode === "SpecificRooms") {
+    await validateSpecificRoomRequests(
+      ctx,
+      tenantId,
+      args.blocks,
+      args.requestedRoomIds ?? []
+    );
+    return;
+  }
+
+  await validateRoomTypeRequests(
+    ctx,
+    tenantId,
+    args.blocks,
+    args.roomTypeRequests
+  );
+}
+
+async function roomTypeRequestsForSelection(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  args: {
+    roomSelectionMode: "SpecificRooms" | "RoomTypeQuantity";
+    requestedRoomIds?: Id<"rooms">[];
+    roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>;
+  }
+) {
+  if (args.roomSelectionMode === "RoomTypeQuantity") {
+    return args.roomTypeRequests;
+  }
+
+  const requestedRooms = await Promise.all(
+    (args.requestedRoomIds ?? []).map((roomId) => ctx.db.get(roomId))
+  );
+  const counts = new Map<Id<"roomTypes">, number>();
+
+  for (const room of requestedRooms) {
+    if (!room || room.tenantId !== tenantId) continue;
+    counts.set(room.roomTypeId, (counts.get(room.roomTypeId) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries()).map(([roomTypeId, quantity]) => ({
+    roomTypeId,
+    quantity,
+  }));
+}
+
+async function roomTypeRulesForRequests(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>
+) {
+  return (
+    await Promise.all(
+      roomTypeRequests.map(async (request) => {
+        const roomType = await ctx.db.get(request.roomTypeId);
+
+        if (!roomType || roomType.tenantId !== tenantId) return null;
+
+        return {
+          id: roomType._id,
+          name: roomType.name,
+          maxBookingDurationMinutes:
+            roomType.maxBookingDurationMinutes ??
+            (roomType.maxDurationHours !== undefined
+              ? roomType.maxDurationHours * 60
+              : undefined),
+          standardSetupMinutes: roomType.standardSetupMinutes ?? 30,
+          standardCleanupMinutes: roomType.standardCleanupMinutes ?? 30,
+        };
+      })
+    )
+  ).filter((roomType): roomType is NonNullable<typeof roomType> => roomType !== null);
+}
+
+async function deriveBufferedBlocks(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  args: {
+    roomSelectionMode: "SpecificRooms" | "RoomTypeQuantity";
+    requestedRoomIds?: Id<"rooms">[];
+    roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>;
+    blocks: Array<{ label: "Setup" | "Session" | "Cleanup"; start: string; end: string }>;
+  }
+) {
+  const sessionBlock = args.blocks.find((block) => block.label === "Session");
+
+  if (!sessionBlock) {
+    throw new Error("Session start and finish are required.");
+  }
+
+  const effectiveRoomTypeRequests = await roomTypeRequestsForSelection(ctx, tenantId, args);
+  const roomTypes = await roomTypeRulesForRequests(ctx, tenantId, effectiveRoomTypeRequests);
+  const buffers = roomTypeBufferMinutes(effectiveRoomTypeRequests, roomTypes);
+
+  return bookingBlocksFromSessionWindow(
+    sessionBlock.start,
+    sessionBlock.end,
+    buffers
+  );
+}
+
+async function validateRoomTypeRequests(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  blocks: Array<{ start: string; end: string }>,
+  roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>
+) {
+  if (roomTypeRequests.length === 0) {
+    throw new Error("Select at least one room type.");
+  }
+
+  const selectedRoomTypes: Array<{
+    id: string;
+    name: string;
+    maxBookingDurationMinutes?: number;
+  }> = [];
+
+  for (const request of roomTypeRequests) {
+    if (!Number.isInteger(request.quantity) || request.quantity <= 0) {
+      throw new Error("Room quantities must be whole numbers greater than zero.");
+    }
+
+    const roomType = await ctx.db.get(request.roomTypeId);
+
+    if (!roomType || roomType.tenantId !== tenantId || !roomType.active) {
+      throw new Error("Selected room type is no longer available.");
+    }
+
+    if (roomType.campusId) {
+      const campus = await ctx.db.get(roomType.campusId);
+
+      if (!campus || campus.tenantId !== tenantId || !campusIsActive(campus)) {
+        throw new Error("Selected campus is no longer available for new bookings.");
+      }
+    }
+
+    selectedRoomTypes.push({
+      id: roomType._id,
+      name: roomType.name,
+      maxBookingDurationMinutes:
+        roomType.maxBookingDurationMinutes ??
+        (roomType.maxDurationHours !== undefined
+          ? roomType.maxDurationHours * 60
+          : undefined),
+    });
+
+    const activeRooms = await ctx.db
+      .query("rooms")
+      .withIndex("by_tenant_type", (q) =>
+        q.eq("tenantId", tenantId).eq("roomTypeId", request.roomTypeId)
+      )
+      .collect();
+
+    const selectableRooms = (
+      await Promise.all(
+        activeRooms.map(async (room) => {
+          if (!room.active) {
+            return null;
+          }
+
+          if (!room.campusId) {
+            return room;
+          }
+
+          const campus = await ctx.db.get(room.campusId);
+          return campus && campus.tenantId === tenantId && campusIsActive(campus)
+            ? room
+            : null;
+        })
+      )
+    ).filter((room): room is Doc<"rooms"> => room !== null);
+
+    if (selectableRooms.length < request.quantity) {
+      throw new Error(`Not enough active rooms are available for ${roomType.name}.`);
+    }
+  }
+
+  const durationError = validateMaxBookingDuration(
+    blocks,
+    roomTypeRequests,
+    selectedRoomTypes
+  );
+
+  if (durationError) {
+    throw new Error(durationError);
+  }
+}
+
+async function validateAssignedRooms(
+  ctx: QueryCtx,
+  tenantId: Id<"tenants">,
+  assignedRoomIds: Id<"rooms">[],
+  requireActive: boolean
+) {
+  const uniqueRoomIds = new Set(assignedRoomIds);
+
+  if (uniqueRoomIds.size !== assignedRoomIds.length) {
+    throw new Error("The same room cannot be assigned more than once.");
+  }
+
+  const rooms = await Promise.all(assignedRoomIds.map((roomId) => ctx.db.get(roomId)));
+
+  for (const room of rooms) {
+    if (!room || room.tenantId !== tenantId) {
+      throw new Error("One or more assigned rooms were not found.");
+    }
+
+    if (requireActive && !room.active) {
+      throw new Error(`${room.name} (${room.code}) is inactive and cannot be assigned to a future booking.`);
+    }
+
+    if (requireActive && room.campusId) {
+      const campus = await ctx.db.get(room.campusId);
+
+      if (!campus || campus.tenantId !== tenantId || !campusIsActive(campus)) {
+        throw new Error(`${room.name} (${room.code}) belongs to an inactive campus and cannot be assigned to a future booking.`);
+      }
+    }
+  }
 }
 
 export const listPublicEvents = query({
@@ -21,51 +1079,262 @@ export const listPublicEvents = query({
     if (!tenant) return [];
     const requests = await ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", tenant._id).eq("status", "Approved")).collect();
     const filtered = requests.filter((request) => request.blocks.some((block) => block.start.startsWith(args.month)));
-    return await Promise.all(filtered.map((request) => withAssignedRooms(ctx, request)));
+    return await Promise.all(filtered.map((request) => toPublicEvent(ctx, request)));
   },
 });
 
 export const listRequests = query({
-  args: { tenantSlug: v.string() },
+  args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const requests = await ctx.db.query("bookingRequests").withIndex("by_tenant_created", (q) => q.eq("tenantId", tenant._id)).order("desc").collect();
     return await Promise.all(requests.map((request) => withAssignedRooms(ctx, request)));
   },
 });
 
 export const getRequest = query({
-  args: { tenantSlug: v.optional(v.string()), requestId: v.id("bookingRequests") },
+  args: { tenantSlug: v.optional(v.string()), auth: v.optional(authContextValidator), requestId: v.id("bookingRequests") },
   handler: async (ctx, args) => {
     const request = await ctx.db.get(args.requestId);
     if (!request) return null;
+    let isStaff = false;
     if (args.tenantSlug) {
-      const { tenant } = await requireStaff(ctx, args.tenantSlug);
+      const { tenant, user, identity } = await requireTenantAccess(ctx, args.tenantSlug, args.auth ?? {});
       if (request.tenantId !== tenant._id) throw new Error("Request not found");
+      isStaff = user.role === "Developer" || user.role === "Admin" || user.role === "Staff";
+
+      if (!isStaff) {
+        const requesterEmail = normalizeEmail(identity.email ?? user.email);
+        const canSeeOwnRequest =
+          request.requesterUserId === user._id ||
+          normalizeEmail(request.requesterEmail) === requesterEmail ||
+          request.ccEmails.some((email) => normalizeEmail(email) === requesterEmail);
+
+        if (!canSeeOwnRequest) {
+          throw new Error("Request not found");
+        }
+      }
     }
     const withRooms = await withAssignedRooms(ctx, request);
     const comments = await ctx.db.query("comments").withIndex("by_request", (q) => q.eq("requestId", args.requestId)).collect();
-    return { ...withRooms, comments };
+    const conflictMetadata = args.tenantSlug && isStaff
+      ? await computeAvailability(ctx, request.tenantId, {
+          blocks: request.blocks,
+          roomTypeRequests: request.roomTypeRequests,
+          requestedRoomIds: request.assignedRoomIds.length
+            ? request.assignedRoomIds
+            : request.requestedRoomIds,
+          roomSelectionMode:
+            request.assignedRoomIds.length || request.requestedRoomIds?.length
+              ? "SpecificRooms"
+              : (request.roomSelectionMode ?? "RoomTypeQuantity"),
+          excludeRequestId: request._id,
+        })
+      : request.conflictMetadata;
+    return {
+      ...withRooms,
+      conflictMetadata,
+      comments: isStaff ? comments : comments.filter((comment) => !comment.internal),
+    };
+  },
+});
+
+export const previewManualAllocation = query({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    requestId: v.id("bookingRequests"),
+    assignedRoomIds: v.array(v.id("rooms")),
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
+    const request = await ctx.db.get(args.requestId);
+
+    if (!request || request.tenantId !== tenant._id) {
+      throw new Error("Request not found");
+    }
+
+    return computeManualAllocationAvailability(
+      ctx,
+      tenant._id,
+      request,
+      args.assignedRoomIds
+    );
+  },
+});
+
+export const getPublicRequestByReference = query({
+  args: {
+    tenantSlug: v.string(),
+    requestId: v.id("bookingRequests"),
+    requesterEmail: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const tenant = await tenantBySlug(ctx, args.tenantSlug);
+    if (!tenant) return null;
+
+    const request = await ctx.db.get(args.requestId);
+    if (
+      !request ||
+      request.tenantId !== tenant._id ||
+      normalizeEmail(request.requesterEmail) !== normalizeEmail(args.requesterEmail)
+    ) {
+      return null;
+    }
+
+    const withRooms = await withAssignedRooms(ctx, request);
+    const comments = await ctx.db
+      .query("comments")
+      .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
+      .collect();
+
+    return {
+      ...withRooms,
+      comments: comments.filter((comment) => !comment.internal),
+    };
+  },
+});
+
+export const listMyRequests = query({
+  args: { tenantSlug: v.string(), auth: authContextValidator },
+  handler: async (ctx, args) => {
+    const { tenant, user, identity } = await requireTenantAccess(ctx, args.tenantSlug, args.auth);
+    const email = normalizeEmail(identity.email ?? user.email);
+    const [byUser, byEmail] = await Promise.all([
+      ctx.db
+        .query("bookingRequests")
+        .withIndex("by_tenant_requester_user", (q) =>
+          q.eq("tenantId", tenant._id).eq("requesterUserId", user._id)
+        )
+        .collect(),
+      ctx.db
+        .query("bookingRequests")
+        .withIndex("by_tenant_requester_email", (q) =>
+          q.eq("tenantId", tenant._id).eq("requesterEmail", email)
+        )
+        .collect(),
+    ]);
+    const requestsById = new Map([...byUser, ...byEmail].map((request) => [request._id, request]));
+    const requests = Array.from(requestsById.values()).sort((a, b) => b.createdAt - a.createdAt);
+
+    return await Promise.all(requests.map((request) => withAssignedRooms(ctx, request)));
   },
 });
 
 export const dashboardSummary = query({
-  args: { tenantSlug: v.string() },
+  args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const [pending, approved, unseen, blockedTimes] = await Promise.all([
       ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", tenant._id).eq("status", "Pending")).collect(),
       ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", tenant._id).eq("status", "Approved")).collect(),
       ctx.db.query("notifications").withIndex("by_tenant_seen", (q) => q.eq("tenantId", tenant._id).eq("seen", false)).collect(),
       ctx.db.query("blockedTimes").withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id)).collect(),
     ]);
-    return { pending: pending.length, approved: approved.length, unseen: unseen.length, conflicts: blockedTimes.length };
+    
+    // Count only active blocked times that are current or upcoming
+    const now = Date.now();
+    const activeBlockedCount = blockedTimes.filter((bt) => {
+      if ((bt.status ?? "Active") !== "Active") return false;
+      const blockEnd = new Date(bt.end).getTime();
+      return blockEnd > now;
+    }).length;
+    const visibleUnseenCount = unseen.filter((notification) => {
+      if (notification.userId && notification.userId !== user._id) {
+        return false;
+      }
+
+      if (notification.targetRoles?.length) {
+        return notification.targetRoles.includes(
+          user.role as "Developer" | "Admin" | "Staff"
+        );
+      }
+
+      if (notification.targetEmails?.length) {
+        const userEmails = new Set([normalizeEmail(user.email), normalizeEmail(args.auth.email ?? "")]);
+        return notification.targetEmails.some((email) =>
+          userEmails.has(normalizeEmail(email))
+        );
+      }
+
+      return true;
+    }).length;
+    
+    return { pending: pending.length, approved: approved.length, unseen: visibleUnseenCount, conflicts: activeBlockedCount };
+  },
+});
+
+export const checkRequestAvailability = query({
+  args: {
+    tenantSlug: v.string(),
+    auth: v.optional(authContextValidator),
+    overrideAcknowledged: v.optional(v.boolean()),
+    roomSelectionMode: v.optional(v.union(v.literal("SpecificRooms"), v.literal("RoomTypeQuantity"))),
+    blocks: v.array(v.object({ start: v.string(), end: v.string() })),
+    roomTypeRequests: v.array(v.object({ roomTypeId: v.id("roomTypes"), quantity: v.number() })),
+    requestedRoomIds: v.optional(v.array(v.id("rooms"))),
+  },
+  handler: async (ctx, args) => {
+    const tenant = await tenantBySlug(ctx, args.tenantSlug);
+    if (!tenant) {
+      return {
+        available: false,
+        canSubmit: false,
+        highestSeverity: "likely_unavailable" as const,
+        summary: "Tenant not found.",
+        conflicts: [
+          {
+            type: "invalid_time" as const,
+            severity: "likely_unavailable" as const,
+            message: "Tenant not found.",
+          },
+        ],
+      };
+    }
+
+    const blocks = await deriveBufferedBlocks(ctx, tenant._id, {
+      roomSelectionMode: args.roomSelectionMode ?? "RoomTypeQuantity",
+      requestedRoomIds: args.requestedRoomIds,
+      roomTypeRequests: args.roomTypeRequests,
+      blocks: args.blocks.map((block) => ({
+        label: "Session" as const,
+        start: block.start,
+        end: block.end,
+      })),
+    });
+
+    const availability = await computeAvailability(ctx, tenant._id, {
+      blocks,
+      roomTypeRequests: args.roomTypeRequests,
+      requestedRoomIds: args.requestedRoomIds,
+      roomSelectionMode: args.roomSelectionMode ?? "RoomTypeQuantity",
+    });
+    const session = sessionBookingRange(blocks);
+    const overrideRole = await verifiedBookingNoticeOverrideRole(
+      ctx,
+      args.tenantSlug,
+      args.auth
+    );
+    const notice = evaluateBookingNoticeWindow({
+      sessionStart: session?.start ?? "",
+      rules: tenantBookingNoticeRules(tenant),
+      timezone: tenant.timezone,
+      canOverride: overrideRole !== undefined,
+      overrideAcknowledged: args.overrideAcknowledged,
+    });
+
+    return availabilityWithNoticeEvaluation(availability, notice);
   },
 });
 
 export const createRequest = mutation({
   args: {
-    tenantId: v.id("tenants"),
+    tenantSlug: v.string(),
+    auth: v.optional(authContextValidator),
+    overrideAcknowledged: v.optional(v.boolean()),
+    overrideReason: v.optional(v.string()),
+    roomSelectionMode: v.union(v.literal("SpecificRooms"), v.literal("RoomTypeQuantity")),
+    requestedRoomIds: v.optional(v.array(v.id("rooms"))),
     requesterName: v.string(),
     requesterEmail: v.string(),
     requesterPhone: v.optional(v.string()),
@@ -80,21 +1349,260 @@ export const createRequest = mutation({
     attachmentStorageIds: v.array(v.id("_storage")),
   },
   handler: async (ctx, args) => {
+    const tenant = await tenantBySlug(ctx, args.tenantSlug);
+    if (!tenant) {
+      throw new Error("Tenant not found.");
+    }
+
+    const requesterError = validateRequesterDetails(args);
+    if (requesterError) {
+      throw new Error(requesterError);
+    }
+
+    await validateRequesterRoomSelection(ctx, tenant._id, {
+      roomSelectionMode: args.roomSelectionMode,
+      blocks: args.blocks,
+      requestedRoomIds: args.requestedRoomIds,
+      roomTypeRequests: args.roomTypeRequests,
+    });
+
+    const blocks = await deriveBufferedBlocks(ctx, tenant._id, {
+      roomSelectionMode: args.roomSelectionMode,
+      requestedRoomIds: args.requestedRoomIds,
+      roomTypeRequests: args.roomTypeRequests,
+      blocks: args.blocks,
+    });
+
+    const blockError = validateBookingBlocks(blocks);
+    if (blockError) {
+      throw new Error(blockError);
+    }
+
+    const openingHoursError = validateSessionWithinOpeningHours(
+      blocks.find((block) => block.label === "Session") ?? blocks[1],
+      tenant.hoursOfOperation,
+      tenant.timezone
+    );
+
+    if (openingHoursError) {
+      throw new Error(openingHoursError);
+    }
+
+    const staffHoursError = validateBookingWithinStaffHours(
+      {
+        start: blocks[0].start,
+        end: blocks[blocks.length - 1].end,
+      },
+      tenant.hoursOfOperation,
+      tenant.timezone
+    );
+
+    if (staffHoursError) {
+      throw new Error(staffHoursError);
+    }
+
+    const overrideRole = await verifiedBookingNoticeOverrideRole(
+      ctx,
+      args.tenantSlug,
+      args.auth
+    );
+    const canOverrideNotice = overrideRole !== undefined;
+    const noticeEvaluation = evaluateBookingNoticeWindow({
+      sessionStart: sessionBookingRange(blocks)?.start ?? "",
+      rules: tenantBookingNoticeRules(tenant),
+      timezone: tenant.timezone,
+      canOverride: canOverrideNotice,
+      overrideAcknowledged: args.overrideAcknowledged,
+    });
+
+    if (!noticeEvaluation.canSubmit) {
+      throw new Error(
+        noticeEvaluation.canOverride
+          ? `${noticeEvaluation.violations[0]?.message ?? "Booking notice limits were exceeded."} Acknowledgement is required to override.`
+          : noticeEvaluation.violations[0]?.message ?? "Booking notice limits were exceeded."
+      );
+    }
+
+    await validateCustomInputs(ctx, tenant._id, args.customInputs);
+
+    const availability = await computeAvailability(ctx, tenant._id, {
+      roomSelectionMode: args.roomSelectionMode,
+      blocks,
+      roomTypeRequests: args.roomTypeRequests,
+      requestedRoomIds: args.requestedRoomIds,
+    });
+    const conflictMetadata = availabilityWithNoticeEvaluation(
+      availability,
+      noticeEvaluation
+    );
+
+    if (!conflictMetadata.canSubmit) {
+      throw new Error(conflictMetadata.conflicts[0]?.message ?? conflictMetadata.summary);
+    }
+
+    const allocation =
+      args.roomSelectionMode === "RoomTypeQuantity"
+        ? autoAllocateRooms({
+            roomSelectionMode: args.roomSelectionMode,
+            blocks,
+            roomTypeRequests: args.roomTypeRequests,
+            ...(await availabilityResources(ctx, tenant._id)),
+          })
+        : {
+            status: "ManualReviewRequired" as const,
+            assignedRoomIds: [],
+            conflicts: [],
+            notes: "Specific room requests are left for manual staff allocation.",
+          };
+    const allocationConflictRoomTypeIds = new Set(
+      allocation.conflicts
+        .map((conflict) => conflict.roomTypeId)
+        .filter((roomTypeId): roomTypeId is string => roomTypeId !== undefined)
+    );
+    const finalConflictMetadata =
+      allocation.conflicts.length > 0
+        ? {
+            ...conflictMetadata,
+            available: false,
+            highestSeverity: "likely_unavailable" as const,
+            summary:
+              "Automatic room allocation could not satisfy every requested room quantity.",
+            conflicts: [
+              ...conflictMetadata.conflicts.filter(
+                (conflict) =>
+                  conflict.type !== "room_type_exhausted" ||
+                  !conflict.roomTypeId ||
+                  !allocationConflictRoomTypeIds.has(conflict.roomTypeId)
+              ),
+              ...allocation.conflicts,
+            ],
+          }
+        : conflictMetadata;
+
     const now = Date.now();
+    const requesterUser = await requesterUserByEmail(ctx, tenant._id, args.requesterEmail);
+    const normalizedRequesterEmail = normalizeEmail(args.requesterEmail);
+    const normalizedCcEmails = args.ccEmails.map(normalizeEmail);
     const requestId = await ctx.db.insert("bookingRequests", {
-      ...args,
-      assignedRoomIds: [],
+      requesterUserId: requesterUser?._id,
+      requesterName: args.requesterName.trim(),
+      requesterEmail: normalizedRequesterEmail,
+      requesterPhone: args.requesterPhone,
+      sessionName: args.sessionName.trim(),
+      attendeeCount: args.attendeeCount,
+      details: args.details.trim(),
+      ccEmails: normalizedCcEmails,
+      timezone: tenant.timezone,
+      blocks,
+      roomSelectionMode: args.roomSelectionMode,
+      requestedRoomIds: args.roomSelectionMode === "SpecificRooms" ? args.requestedRoomIds : undefined,
+      roomTypeRequests: args.roomTypeRequests,
+      customInputs: args.customInputs,
+      attachmentStorageIds: args.attachmentStorageIds,
+      tenantId: tenant._id,
+      assignedRoomIds: allocation.assignedRoomIds as Id<"rooms">[],
+      allocationStatus:
+        args.roomSelectionMode === "RoomTypeQuantity"
+          ? allocation.status
+          : "Unallocated",
+      allocationNotes: allocation.notes,
+      allocationUpdatedAt: now,
+      conflictMetadata: finalConflictMetadata,
+      bookingNoticeMetadata: noticeEvaluation.violations.length
+        ? {
+            rules: tenantBookingNoticeRules(tenant),
+            canOverride: canOverrideNotice,
+            overrideAcknowledged: args.overrideAcknowledged === true,
+            overrideReason: args.overrideReason?.trim() || undefined,
+            overriddenByRole:
+              canOverrideNotice && args.overrideAcknowledged === true
+                ? overrideRole
+                : undefined,
+            requiresAdditionalApproval:
+              noticeEvaluation.requiresAdditionalApproval,
+            violations: noticeEvaluation.violations,
+            evaluatedAt: now,
+          }
+        : undefined,
       status: "Pending",
       createdAt: now,
       updatedAt: now,
     });
-    await ctx.db.insert("notifications", {
-      tenantId: args.tenantId,
+    await createStaffNotification(ctx, {
+      tenantId: tenant._id,
       requestId,
-      message: `New pending request: ${args.sessionName}`,
-      seen: false,
+      type: "NewRequest",
+      title: "New booking request",
+      message: `${args.sessionName.trim()} is waiting for staff review on ${formatRequestWindow(blocks, tenant.timezone)}.`,
       createdAt: now,
     });
+    const createdRequest = await ctx.db.get(requestId);
+    if (createdRequest) {
+      await createRequesterNotification(ctx, {
+        request: createdRequest,
+        type: "NewRequest",
+        title: "Booking request submitted",
+        message: `${createdRequest.sessionName} was submitted and is waiting for staff review.`,
+        createdAt: now,
+      });
+      await scheduleNewRequestEmail(ctx, {
+        tenant,
+        request: createdRequest,
+        to: bookingContactEmails(createdRequest),
+      });
+      await scheduleAdminNewRequestEmail(ctx, {
+        tenant,
+        request: createdRequest,
+      });
+    }
+    await recordAuditEvent(ctx, {
+      eventType: "booking.created",
+      entityType: "booking",
+      entityId: requestId,
+      bookingId: requestId,
+      tenantId: tenant._id,
+      actor: requesterActorSnapshot({
+        requesterName: args.requesterName,
+        requesterEmail: normalizedRequesterEmail,
+        requesterUserId: requesterUser?._id,
+      }),
+      visibility: "requester",
+      severity: finalConflictMetadata.highestSeverity === "likely_unavailable" ? "warning" : "info",
+      message: `Booking request created: ${args.sessionName.trim()}`,
+      metadata: {
+        status: "Pending",
+        requesterName: args.requesterName.trim(),
+        requesterEmail: normalizedRequesterEmail,
+        roomSelectionMode: args.roomSelectionMode,
+        requestedRoomIds: args.requestedRoomIds?.map(String),
+        roomTypeRequests: args.roomTypeRequests.map((item) => ({
+          roomTypeId: String(item.roomTypeId),
+          quantity: item.quantity,
+        })),
+        attachmentCount: args.attachmentStorageIds.length,
+      },
+    });
+    if (finalConflictMetadata.conflicts.length > 0) {
+      await recordAuditEvent(ctx, {
+        eventType: "booking.conflict_detected",
+        entityType: "booking",
+        entityId: requestId,
+        bookingId: requestId,
+        tenantId: tenant._id,
+        actor: requesterActorSnapshot({
+          requesterName: args.requesterName,
+          requesterEmail: normalizedRequesterEmail,
+          requesterUserId: requesterUser?._id,
+        }),
+        visibility: "staff",
+        severity:
+          finalConflictMetadata.highestSeverity === "likely_unavailable"
+            ? "warning"
+            : "info",
+        message: finalConflictMetadata.summary,
+        metadata: finalConflictMetadata,
+      });
+    }
     return requestId;
   },
 });
@@ -102,64 +1610,506 @@ export const createRequest = mutation({
 export const updateStatus = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     requestId: v.id("bookingRequests"),
-    status: v.union(v.literal("Pending"), v.literal("Approved"), v.literal("Completed"), v.literal("Declined"), v.literal("Cancelled")),
+    status: v.union(
+      v.literal("Pending"),
+      v.literal("Approved"),
+      v.literal("Confirmed"),
+      v.literal("Completed"),
+      v.literal("Declined"),
+      v.literal("Cancelled")
+    ),
     assignedRoomIds: v.optional(v.array(v.id("rooms"))),
+    reason: v.optional(v.string()),
+    allowConflictOverride: v.optional(v.boolean()),
+    allowCompletedOverride: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const request = await ctx.db.get(args.requestId);
     if (!request || request.tenantId !== tenant._id) throw new Error("Request not found");
-    await ctx.db.patch(args.requestId, {
-      status: args.status,
-      assignedRoomIds: args.assignedRoomIds ?? request.assignedRoomIds,
-      updatedAt: Date.now(),
+
+    const assignedRoomIds = args.assignedRoomIds ?? request.assignedRoomIds;
+    const requiresActiveRooms =
+      bookingEndsInFuture(request) &&
+      (args.status === "Pending" ||
+        args.status === "Approved" ||
+        args.status === "Confirmed");
+
+    await validateAssignedRooms(ctx, tenant._id, assignedRoomIds, requiresActiveRooms);
+    const conflictMetadata = await computeAvailability(ctx, tenant._id, {
+      roomSelectionMode: assignedRoomIds.length
+        ? "SpecificRooms"
+        : (request.roomSelectionMode ?? "RoomTypeQuantity"),
+      blocks: request.blocks,
+      roomTypeRequests: request.roomTypeRequests,
+      requestedRoomIds: assignedRoomIds,
+      excludeRequestId: request._id,
     });
+
+    const reason = reasonOrUndefined(args.reason);
+
+    if (requiresRoomSafetyCheck(args.status)) {
+      if (assignedRoomIds.length === 0) {
+        throw new Error("Assign at least one room before approving or confirming this booking.");
+      }
+    
+      const blockingConflicts = conflictMetadata.conflicts.filter(
+        (conflict) => conflict.severity === "likely_unavailable"
+      );
+    
+      if (blockingConflicts.length > 0 && !args.allowConflictOverride) {
+        throw new Error(
+          `This booking has room conflicts and cannot be ${args.status.toLowerCase()} without staff override. ${conflictMetadata.summary}`
+        );
+      }
+    }
+    
+    if ((args.status === "Declined" || args.status === "Cancelled") && reason) {
+      // Optional reason accepted - no block.
+    }
+    
+    if (args.status === "Completed") {
+      const canComplete =
+        bookingHasEnded(request) ||
+        (args.allowCompletedOverride && isStaffOverrideRole(user?.role));
+    
+      if (!canComplete) {
+        throw new Error(
+          "This booking cannot be marked as completed until after the booking end time unless a staff override is used."
+        );
+      }
+    }
+
+    const now = Date.now();
+    const patch = {
+      status: args.status,
+      assignedRoomIds,
+      allocationStatus:
+        args.assignedRoomIds !== undefined
+          ? "ManuallyAdjusted"
+          : request.allocationStatus,
+      allocationUpdatedByUserId:
+        args.assignedRoomIds !== undefined
+          ? user?._id
+          : request.allocationUpdatedByUserId,
+      allocationUpdatedAt:
+        args.assignedRoomIds !== undefined ? now : request.allocationUpdatedAt,
+      conflictMetadata,
+      updatedAt: now,
+    };
+
+    await ctx.db.patch(args.requestId, patch);
+    await createStaffNotification(ctx, {
+      tenantId: tenant._id,
+      requestId: args.requestId,
+      type: "StatusChanged",
+      title: "Booking status changed",
+      message: `${request.sessionName} changed from ${request.status} to ${args.status}.`,
+      createdAt: now,
+    });
+    await createRequesterNotification(ctx, {
+      request,
+      type: "StatusChanged",
+      title: "Booking status updated",
+      message: `${request.sessionName} is now ${args.status}.`,
+      createdAt: now,
+    });
+    await scheduleStatusUpdateEmail(ctx, {
+      tenant,
+      request,
+      status: args.status,
+      reason,
+    });
+    await recordAuditEvent(ctx, {
+      eventType: statusEventType(args.status),
+      entityType: "booking",
+      entityId: args.requestId,
+      bookingId: args.requestId,
+      tenantId: tenant._id,
+      actor: actorFromUser(user),
+      visibility: "requester",
+      severity: args.status === "Declined" || args.status === "Cancelled" ? "warning" : "info",
+      message: reason
+      ? `Booking status changed from ${request.status} to ${args.status}: ${reason}`
+      : `Booking status changed from ${request.status} to ${args.status}`,
+      metadata: {
+        previousStatus: request.status,
+        status: args.status,
+        conflictSummary: conflictMetadata.summary,
+        reason,
+        allowConflictOverride: args.allowConflictOverride ?? false,
+        allowCompletedOverride: args.allowCompletedOverride ?? false,
+      },
+      diff: compactDiff(
+        {
+          status: request.status,
+          assignedRoomIds: request.assignedRoomIds.map(String),
+          allocationStatus: request.allocationStatus,
+        },
+        {
+          status: patch.status,
+          assignedRoomIds: patch.assignedRoomIds.map(String),
+          allocationStatus: patch.allocationStatus,
+        },
+        ["status", "assignedRoomIds", "allocationStatus"]
+      ),
+    });
+    if (args.assignedRoomIds !== undefined) {
+      await createStaffNotification(ctx, {
+        tenantId: tenant._id,
+        requestId: args.requestId,
+        type: "AllocationChanged",
+        title: "Room allocation changed",
+        message: `${request.sessionName} room allocation was adjusted during status update.`,
+        createdAt: now,
+      });
+      await createRequesterNotification(ctx, {
+        request,
+        type: "AllocationChanged",
+        title: "Booking rooms updated",
+        message: `${request.sessionName} room allocation was updated.`,
+        createdAt: now,
+      });
+      await recordAuditEvent(ctx, {
+        eventType: "booking.allocation_override",
+        entityType: "booking",
+        entityId: args.requestId,
+        bookingId: args.requestId,
+        tenantId: tenant._id,
+        actor: actorFromUser(user),
+        visibility: "staff",
+        message: "Room allocation overridden during status update",
+        metadata: {
+          assignedRoomIds: assignedRoomIds.map(String),
+        },
+        diff: compactDiff(
+          { assignedRoomIds: request.assignedRoomIds.map(String) },
+          { assignedRoomIds: assignedRoomIds.map(String) },
+          ["assignedRoomIds"]
+        ),
+      });
+    }
+  },
+});
+
+export const updateAllocation = mutation({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    requestId: v.id("bookingRequests"),
+    assignedRoomIds: v.array(v.id("rooms")),
+    allocationNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
+    const request = await ctx.db.get(args.requestId);
+
+    if (!request || request.tenantId !== tenant._id) {
+      throw new Error("Request not found");
+    }
+
+    await validateAssignedRooms(ctx, tenant._id, args.assignedRoomIds, false);
+
+    const conflictMetadata = await computeManualAllocationAvailability(
+      ctx,
+      tenant._id,
+      request,
+      args.assignedRoomIds
+    );
+    const now = Date.now();
+    const allocationNotes = args.allocationNotes?.trim();
+
+    await ctx.db.patch(args.requestId, {
+      assignedRoomIds: args.assignedRoomIds,
+      allocationStatus: "ManuallyAdjusted",
+      allocationNotes: allocationNotes || undefined,
+      allocationUpdatedByUserId: user?._id,
+      allocationUpdatedAt: now,
+      conflictMetadata,
+      updatedAt: now,
+    });
+    await createStaffNotification(ctx, {
+      tenantId: tenant._id,
+      requestId: args.requestId,
+      type: "AllocationChanged",
+      title: "Room allocation changed",
+      message: `${request.sessionName} room allocation was updated.`,
+      createdAt: now,
+    });
+    await createRequesterNotification(ctx, {
+      request,
+      type: "AllocationChanged",
+      title: "Booking rooms updated",
+      message: `${request.sessionName} room allocation was updated.`,
+      createdAt: now,
+    });
+    await scheduleBookingUpdatedEmail(ctx, {
+      tenant,
+      request,
+      changeSummary: "The room allocation for this booking request was updated.",
+    });
+    await recordAuditEvent(ctx, {
+      eventType: "booking.allocation_changed",
+      entityType: "booking",
+      entityId: args.requestId,
+      bookingId: args.requestId,
+      tenantId: tenant._id,
+      actor: actorFromUser(user),
+      visibility: "staff",
+      severity: conflictMetadata.highestSeverity === "likely_unavailable" ? "warning" : "info",
+      message: "Room allocation changed",
+      metadata: {
+        allocationStatus: "ManuallyAdjusted",
+        allocationNotes: allocationNotes || undefined,
+        conflictSummary: conflictMetadata.summary,
+        assignedRoomIds: args.assignedRoomIds.map(String),
+      },
+      diff: compactDiff(
+        {
+          assignedRoomIds: request.assignedRoomIds.map(String),
+          allocationNotes: request.allocationNotes,
+          allocationStatus: request.allocationStatus,
+        },
+        {
+          assignedRoomIds: args.assignedRoomIds.map(String),
+          allocationNotes: allocationNotes || undefined,
+          allocationStatus: "ManuallyAdjusted",
+        },
+        ["assignedRoomIds", "allocationNotes", "allocationStatus"]
+      ),
+    });
+    if (conflictMetadata.conflicts.length > 0) {
+      await recordAuditEvent(ctx, {
+        eventType: "booking.conflict_detected",
+        entityType: "booking",
+        entityId: args.requestId,
+        bookingId: args.requestId,
+        tenantId: tenant._id,
+        actor: actorFromUser(user),
+        visibility: "staff",
+        severity:
+          conflictMetadata.highestSeverity === "likely_unavailable"
+            ? "warning"
+            : "info",
+        message: conflictMetadata.summary,
+        metadata: conflictMetadata,
+      });
+    }
   },
 });
 
 export const addComment = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: authContextValidator,
     requestId: v.id("bookingRequests"),
     bodyMarkdown: v.string(),
     internal: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const { tenant, user } = await requireStaff(ctx, args.tenantSlug);
+    const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const request = await ctx.db.get(args.requestId);
     if (!request || request.tenantId !== tenant._id) throw new Error("Request not found");
-    return await ctx.db.insert("comments", {
+    const now = Date.now();
+    const bodyMarkdown = args.bodyMarkdown.trim();
+    const commentId = await ctx.db.insert("comments", {
       tenantId: tenant._id,
       requestId: args.requestId,
       authorUserId: user?._id,
-      bodyMarkdown: args.bodyMarkdown,
+      authorName: user?.name,
+      authorEmail: user?.email,
+      bodyMarkdown,
       internal: args.internal,
-      createdAt: Date.now(),
+      createdAt: now,
     });
+    await createStaffNotification(ctx, {
+      tenantId: tenant._id,
+      requestId: args.requestId,
+      type: "CommentAdded",
+      title: args.internal ? "Internal comment added" : "Booking comment added",
+      message: `${request.sessionName} has a new ${args.internal ? "internal " : ""}comment.`,
+      createdAt: now,
+    });
+    if (!args.internal) {
+      await createRequesterNotification(ctx, {
+        request,
+        type: "CommentAdded",
+        title: "New booking comment",
+        message: `${request.sessionName} has a new comment.`,
+        createdAt: now,
+      });
+      await scheduleCommentAddedEmail(ctx, {
+        tenant,
+        request,
+      });
+    }
+    await recordAuditEvent(ctx, {
+      eventType: "booking.comment_added",
+      entityType: "comment",
+      entityId: commentId,
+      bookingId: args.requestId,
+      tenantId: tenant._id,
+      actor: actorFromUser(user),
+      visibility: args.internal ? "staff" : "requester",
+      message: args.internal ? "Internal booking comment added" : "Booking comment added",
+      metadata: {
+        commentId: String(commentId),
+        internal: args.internal,
+        bodyMarkdown,
+      },
+    });
+    return commentId;
   },
 });
 
 export const validateAvailability = action({
   args: {
-    tenantId: v.id("tenants"),
+    tenantSlug: v.string(),
+    auth: authContextValidator,
     blocks: v.array(v.object({ start: v.string(), end: v.string() })),
     roomTypeRequests: v.array(v.object({ roomTypeId: v.id("roomTypes"), quantity: v.number() })),
   },
   handler: async (ctx, args): Promise<{ available: boolean; reason?: string }> => {
-    const approved = await ctx.runQuery(api.bookings.internalApprovedRequests, { tenantId: args.tenantId });
-    const hasConflict = approved.some((request) =>
-      request.blocks.some((existing) =>
-        args.blocks.some((candidate) => new Date(candidate.start) < new Date(existing.end) && new Date(existing.start) < new Date(candidate.end)),
-      ),
-    );
-    return hasConflict ? { available: false, reason: "Requested time overlaps an approved booking or blocked time." } : { available: true };
+    const { tenant } = await ctx.runQuery(api.bookings.resolveTenantForAvailability, {
+      tenantSlug: args.tenantSlug,
+      auth: args.auth,
+    });
+    const snapshot = await ctx.runQuery(internal.bookings.internalAvailabilitySnapshot, {
+      tenantId: tenant._id,
+    });
+    const result = checkAvailabilityConflicts({
+      blocks: args.blocks,
+      roomTypeRequests: args.roomTypeRequests,
+      roomSelectionMode: "RoomTypeQuantity",
+      ...snapshot,
+    });
+
+    return result.available
+      ? { available: true }
+      : {
+          available: false,
+          reason: result.conflicts[0]?.message ?? result.summary,
+        };
   },
 });
 
-export const internalApprovedRequests = query({
+export const resolveTenantForAvailability = query({
+  args: { tenantSlug: v.string(), auth: authContextValidator },
+  handler: async (ctx, args) => {
+    return await requireStaff(ctx, args.tenantSlug, args.auth);
+  },
+});
+
+export const internalAvailabilitySnapshot = internalQuery({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args) => {
+    return availabilityResources(ctx, args.tenantId);
+  },
+});
+
+export const internalApprovedRequests = internalQuery({
   args: { tenantId: v.id("tenants") },
   handler: async (ctx, args) => {
     return await ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", args.tenantId).eq("status", "Approved")).collect();
+  },
+});
+
+export const internalActiveRooms = internalQuery({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args) => {
+    const rooms = await ctx.db
+      .query("rooms")
+      .withIndex("by_tenant_active", (q) =>
+        q.eq("tenantId", args.tenantId).eq("active", true)
+      )
+      .collect();
+
+    const selectableRooms = await Promise.all(
+      rooms.map(async (room) => {
+        if (!room.campusId) {
+          return room;
+        }
+
+        const campus = await ctx.db.get(room.campusId);
+        return campus && campus.tenantId === args.tenantId && campusIsActive(campus)
+          ? room
+          : null;
+      })
+    );
+
+    return selectableRooms.filter((room): room is Doc<"rooms"> => room !== null);
+  },
+});
+
+export const internalRoomTypes = internalQuery({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args) => {
+    const roomTypes = await ctx.db
+      .query("roomTypes")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
+      .collect();
+
+    const selectableRoomTypes = await Promise.all(
+      roomTypes.map(async (roomType) => {
+        if (!roomType.active) {
+          return null;
+        }
+
+        if (!roomType.campusId) {
+          return roomType;
+        }
+
+        const campus = await ctx.db.get(roomType.campusId);
+        return campus && campus.tenantId === args.tenantId && campusIsActive(campus)
+          ? roomType
+          : null;
+      })
+    );
+
+    return selectableRoomTypes.filter((roomType): roomType is Doc<"roomTypes"> => roomType !== null);
+  },
+});
+
+/**
+ * Staff triage query: returns all booking requests for a tenant, enriched
+ * with assigned room names, allocation status, and stored conflict metadata.
+ * Supports optional status filter so the client can switch tabs without
+ * re-fetching everything.
+ */
+export const listRequestsForTriage = query({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    status: v.optional(
+      v.union(
+        v.literal("Pending"),
+        v.literal("Approved"),
+        v.literal("Confirmed"),
+        v.literal("Completed"),
+        v.literal("Declined"),
+        v.literal("Cancelled")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
+
+    const requests = args.status
+      ? await ctx.db
+          .query("bookingRequests")
+          .withIndex("by_tenant_status", (q) =>
+            q.eq("tenantId", tenant._id).eq("status", args.status!)
+          )
+          .order("desc")
+          .collect()
+      : await ctx.db
+          .query("bookingRequests")
+          .withIndex("by_tenant_created", (q) => q.eq("tenantId", tenant._id))
+          .order("desc")
+          .collect();
+
+    return Promise.all(requests.map((request) => withAssignedRooms(ctx, request)));
   },
 });

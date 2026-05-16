@@ -1,14 +1,14 @@
-export type Role = "Admin" | "Staff" | "Requester";
+export type Role = "Developer" | "Admin" | "Staff" | "Requester";
 export type RequestStatus = "Pending" | "Approved" | "Completed" | "Declined" | "Cancelled";
 
 export type RoomType = {
   id: string;
   name: string;
   campus: string;
-  maxDurationHours: number;
+  maxBookingDurationMinutes?: number;
   capacity: number;
   quantity: number;
-  isSpecial: boolean;
+  specialRoom: boolean;
 };
 
 export type BookingBlock = {
@@ -49,4 +49,5 @@ export type FormField = {
   required?: boolean;
   helpText?: string;
   options?: string[];
+  maxLength?: number;
 };

@@ -1,27 +1,43 @@
-import { redirect } from "next/navigation";
-import { DashboardNav, DashboardTopbar } from "@/components/ui";
-import { canUseDashboard, getCurrentUser, roleFromWorkOS } from "@/lib/auth";
+import { DashboardAuthProvider } from "@/components/dashboard-auth";
+import { AppSidebar } from "@/components/app-sidebar";
+import { NotAllowed } from "@/components/not-allowed";
+import { DashboardTopbar } from "@/components/ui";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { getDashboardAccess } from "@/lib/dashboard-access";
+
+export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const session = await getCurrentUser();
-  const role = roleFromWorkOS(session);
-  const enforceAuth = process.env.WORKOS_CLIENT_ID && process.env.WORKOS_API_KEY && process.env.WORKOS_COOKIE_PASSWORD;
+  const access = await getDashboardAccess();
+  const environment =
+    process.env.SIMHQ_ENV ??
+    process.env.SIMHUB_ENV ??
+    process.env.VERCEL_ENV ??
+    process.env.NODE_ENV;
 
-  if (enforceAuth && !session?.user) {
-    redirect("/auth/sign-in");
-  }
-
-  if (enforceAuth && session?.user && !canUseDashboard(role)) {
-    redirect("/");
+  if (!access.ok) {
+    return (
+      <main className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <NotAllowed
+          title="Dashboard access required"
+          message="Your account is signed in, but it does not have access to this dashboard workspace. Ask an admin to update your role, or switch workspaces from account access."
+        />
+      </main>
+    );
   }
 
   return (
-    <div className="min-h-screen lg:pl-72">
-      <DashboardNav />
-      <div className="min-w-0">
-        <DashboardTopbar />
-        <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
-      </div>
-    </div>
+    <DashboardAuthProvider auth={access.auth}>
+      <TooltipProvider>
+        <SidebarProvider>
+          <AppSidebar auth={access.auth} environment={environment} />
+          <SidebarInset>
+            <DashboardTopbar />
+            <main className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+          </SidebarInset>
+        </SidebarProvider>
+      </TooltipProvider>
+    </DashboardAuthProvider>
   );
 }

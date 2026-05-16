@@ -1,7 +1,9 @@
 "use client";
 
 import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ThemeProvider } from "next-themes";
 import { type ReactNode, useMemo } from "react";
+import { Toaster } from "@/components/ui/sonner";
 
 export function Providers({ children }: { children: ReactNode }) {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -11,7 +13,26 @@ export function Providers({ children }: { children: ReactNode }) {
     [convexUrl],
   );
 
-  if (!convex) return <>{children}</>;
+  const content = convex ? (
+    <ConvexProvider client={convex}>
+      {children}
+      <Toaster />
+    </ConvexProvider>
+  ) : (
+    <>
+      {children}
+      <Toaster />
+    </>
+  );
 
-  return <ConvexProvider client={convex}>{children}</ConvexProvider>;
+  return (
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem={true}
+      disableTransitionOnChange
+    >
+      {content}
+    </ThemeProvider>
+  );
 }

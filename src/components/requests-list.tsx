@@ -1,24 +1,32 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { FileText } from "lucide-react";
 import { api } from "../../convex/_generated/api";
+import { CardSkeletonList, EmptyState } from "@/components/app-state";
+import { useDashboardAuth } from "@/components/dashboard-auth";
 import { RequestCard, SectionHeader } from "@/components/ui";
-import { TENANT_SLUG } from "@/lib/config";
 import { formatRequestDate, formatRooms } from "@/lib/format";
 
-const statuses = ["Pending", "Approved", "Completed", "Declined", "Cancelled"];
+const statuses = ["Pending", "Approved", "Confirmed", "Completed", "Declined", "Cancelled"];
 
 export function RequestsList() {
-  const requests = useQuery(api.bookings.listRequests, { tenantSlug: TENANT_SLUG });
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
+  const requests = useQuery(api.bookings.listRequests, { tenantSlug, auth });
+  const isLoading = requests === undefined;
 
   return (
     <>
       <SectionHeader title="Requests" eyebrow="Workflow" />
       <div className="mb-4 flex flex-wrap gap-2">
-        {statuses.map((status) => <button key={status} className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-sm">{status}</button>)}
+        {statuses.map((status) => <button key={status} className="rounded-full border border-border bg-card px-3 py-1.5 text-sm">{status}</button>)}
       </div>
-      <div className="grid gap-3">
-        {(requests ?? []).map((request) => (
+      {isLoading ? (
+        <CardSkeletonList />
+      ) : requests.length > 0 ? (
+        <div className="grid gap-3">
+          {requests.map((request) => (
           <RequestCard
             key={request._id}
             request={{
@@ -30,9 +38,16 @@ export function RequestsList() {
               status: request.status,
             }}
           />
-        ))}
-        {requests?.length === 0 ? <p className="rounded-2xl border border-dashed border-blue-100 bg-white/70 p-5 text-sm text-slate-500">No requests in Convex yet.</p> : null}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={FileText}
+          title="No requests yet"
+          message="Booking requests submitted by requesters will appear here. Use the booking form to create the first one."
+          action={{ label: "Create request", href: "/book" }}
+        />
+      )}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { differenceInMinutes, parseISO } from "date-fns";
+import { rangesOverlap } from "./conflict-engine";
 import type { BookingBlock } from "./domain";
 
 export const UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
@@ -15,5 +16,5 @@ export function withinUploadLimit(bytes: number, maxBytes = UPLOAD_MAX_BYTES) {
 }
 
 export function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
-  return parseISO(aStart) < parseISO(bEnd) && parseISO(bStart) < parseISO(aEnd);
+  return rangesOverlap({ start: aStart, end: aEnd }, { start: bStart, end: bEnd });
 }

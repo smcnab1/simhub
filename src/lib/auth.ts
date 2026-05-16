@@ -1,6 +1,7 @@
 import { decodeJwt } from "jose";
 import { cookies } from "next/headers";
 import { unsealData } from "iron-session";
+import { canAccessStaff } from "./authz-logic";
 import type { Role } from "./domain";
 
 type WorkOSRoleSource = {
@@ -56,6 +57,7 @@ function normalizeRole(role: unknown): Role | null {
   }
 
   const normalized = role.toLowerCase();
+  if (normalized === "developer") return "Developer";
   if (normalized === "admin") return "Admin";
   if (normalized === "staff") return "Staff";
   if (normalized === "requester" || normalized === "user") return "Requester";
@@ -71,6 +73,7 @@ export function roleFromWorkOS(source?: WorkOSRoleSource): Role {
 
   if (Array.isArray(source?.roles)) {
     const roles = source.roles.map(normalizeRole);
+    if (roles.includes("Developer")) return "Developer";
     if (roles.includes("Admin")) return "Admin";
     if (roles.includes("Staff")) return "Staff";
     if (roles.includes("Requester")) return "Requester";
@@ -80,5 +83,5 @@ export function roleFromWorkOS(source?: WorkOSRoleSource): Role {
 }
 
 export function canUseDashboard(role: Role) {
-  return role === "Admin" || role === "Staff";
+  return canAccessStaff(role);
 }
