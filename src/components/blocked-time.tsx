@@ -330,7 +330,7 @@ export function BlockedTimeForm({
       <div className="space-y-2">
         <Label htmlFor="scope">Block Scope</Label>
         <Select value={scope} onValueChange={(v) => handleScopeChange(v as BlockedTimeScope)}>
-          <SelectTrigger id="scope">
+          <SelectTrigger id="scope" className="w-full">
             <SelectValue placeholder="Select scope" />
           </SelectTrigger>
           <SelectContent>
@@ -376,10 +376,10 @@ export function BlockedTimeForm({
             value={roomId}
             onValueChange={(v) => setRoomId(v as Id<"rooms">)}
           >
-            <SelectTrigger id="room">
+            <SelectTrigger id="room" className="w-full">
               <SelectValue placeholder="Select room" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[300px]">
               {activeRooms.map((room) => (
                 <SelectItem key={room._id} value={room._id}>
                   {room.code} - {room.name}
@@ -397,10 +397,10 @@ export function BlockedTimeForm({
             value={roomTypeId}
             onValueChange={(v) => setRoomTypeId(v as Id<"roomTypes">)}
           >
-            <SelectTrigger id="roomType">
+            <SelectTrigger id="roomType" className="w-full">
               <SelectValue placeholder="Select room type" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[300px]">
               {activeRoomTypes.map((rt) => (
                 <SelectItem key={rt._id} value={rt._id}>
                   {rt.name}
@@ -418,10 +418,10 @@ export function BlockedTimeForm({
             value={campusId}
             onValueChange={(v) => setCampusId(v as Id<"campuses">)}
           >
-            <SelectTrigger id="campus">
+            <SelectTrigger id="campus" className="w-full">
               <SelectValue placeholder="Select campus" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[300px]">
               {activeCampuses.map((campus) => (
                 <SelectItem key={campus._id} value={campus._id}>
                   {campus.name}
@@ -438,18 +438,15 @@ export function BlockedTimeForm({
           <Label>Start</Label>
           <div className="flex gap-2">
             <Popover open={startDateOpen} onOpenChange={setStartDateOpen}>
-              <PopoverTrigger>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className={cn(
-                    "flex-1 justify-start text-left font-normal",
-                    !startDate && "text-muted-foreground"
-                  )}
-                >
-                  <Calendar className="mr-2 size-4" />
-                  {startDate ? formatDateForInput(startDate) : "Pick date"}
-                </Button>
+              <PopoverTrigger
+                type="button"
+                className={cn(
+                  "inline-flex min-w-[140px] flex-1 items-center justify-start gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal shadow-sm transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  !startDate && "text-muted-foreground"
+                )}
+              >
+                <Calendar className="size-4" />
+                {startDate ? formatDateForInput(startDate) : "Pick date"}
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
                 <CalendarPicker
@@ -472,7 +469,7 @@ export function BlockedTimeForm({
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-28"
+              className="w-32"
             />
           </div>
         </div>
@@ -481,18 +478,15 @@ export function BlockedTimeForm({
           <Label>End</Label>
           <div className="flex gap-2">
             <Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
-              <PopoverTrigger>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className={cn(
-                    "flex-1 justify-start text-left font-normal",
-                    !endDate && "text-muted-foreground"
-                  )}
-                >
-                  <Calendar className="mr-2 size-4" />
-                  {endDate ? formatDateForInput(endDate) : "Pick date"}
-                </Button>
+              <PopoverTrigger
+                type="button"
+                className={cn(
+                  "inline-flex min-w-[140px] flex-1 items-center justify-start gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-normal shadow-sm transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  !endDate && "text-muted-foreground"
+                )}
+              >
+                <Calendar className="size-4" />
+                {endDate ? formatDateForInput(endDate) : "Pick date"}
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
                 <CalendarPicker
@@ -510,7 +504,7 @@ export function BlockedTimeForm({
               type="time"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="w-28"
+              className="w-32"
             />
           </div>
         </div>
@@ -571,7 +565,7 @@ export function BlockedTimeDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Ban className="size-5 text-destructive" />
