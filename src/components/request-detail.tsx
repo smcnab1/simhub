@@ -12,6 +12,8 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
+
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
@@ -21,6 +23,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formFieldClass, primaryButtonClass } from "@/components/ui";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatBlockTime, formatRooms } from "@/lib/format";
 import { TENANT_SLUG } from "@/lib/config";
 import {
@@ -95,6 +115,13 @@ type TimelineEvent = {
   diff?: Array<{ field: string; before: unknown; after: unknown }>;
 };
 
+type StatusAction =
+  | "Approved"
+  | "Declined"
+  | "Cancelled"
+  | "Pending"
+  | "Completed";
+
 function eventMetadata(event: TimelineEvent) {
   return event.metadata && typeof event.metadata === "object"
     ? (event.metadata as Record<string, unknown>)
@@ -132,7 +159,9 @@ function formatAuditEventLabel(eventType: string) {
 }
 
 function formatAllocationStatus(value: unknown) {
-  if (value === null || value === undefined || value === "") return "Not allocated";
+  if (value === null || value === undefined || value === "") {
+    return "Not allocated";
+  }
 
   const labels: Record<string, string> = {
     Unallocated: "Not allocated",
@@ -162,7 +191,6 @@ function formatRoomChip(room?: { code: string; name: string } | null) {
 
 function toRoomIdArray(value: unknown) {
   if (!Array.isArray(value)) return [];
-
   return value.filter((item): item is string => typeof item === "string");
 }
 
@@ -210,6 +238,15 @@ function humanValue(value: unknown) {
   return String(value);
 }
 
+function formatAuditTime(value?: number) {
+  if (!value) return "Not recorded";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 function AllocationChangeSummary({
   diff,
   rooms,
@@ -233,13 +270,17 @@ function AllocationChangeSummary({
 
   if (roomChanges.added.length) {
     summaryParts.push(
-      `${roomChanges.added.length} room${roomChanges.added.length === 1 ? "" : "s"} assigned`
+      `${roomChanges.added.length} room${
+        roomChanges.added.length === 1 ? "" : "s"
+      } assigned`
     );
   }
 
   if (roomChanges.removed.length) {
     summaryParts.push(
-      `${roomChanges.removed.length} room${roomChanges.removed.length === 1 ? "" : "s"} removed`
+      `${roomChanges.removed.length} room${
+        roomChanges.removed.length === 1 ? "" : "s"
+      } removed`
     );
   }
 
@@ -294,7 +335,9 @@ function GenericChangeSummary({
           key={entry.field}
           className="rounded-lg border border-border bg-background p-3 text-sm"
         >
-          <p className="font-medium text-foreground">{humanFieldLabel(entry.field)}</p>
+          <p className="font-medium text-foreground">
+            {humanFieldLabel(entry.field)}
+          </p>
           <p className="mt-1 text-muted-foreground">
             {humanValue(entry.before)} →{" "}
             <span className="text-foreground">{humanValue(entry.after)}</span>
@@ -363,8 +406,11 @@ function BookingTimeline({
     <Card>
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-semibold">Activity timeline</h2>
-        <Badge variant="outline">{events ? `${events.length} events` : "Loading"}</Badge>
+        <Badge variant="outline">
+          {events ? `${events.length} events` : "Loading"}
+        </Badge>
       </div>
+
       <div className="mt-4 grid gap-3">
         {events === undefined ? (
           <p className="text-sm text-muted-foreground">Loading activity...</p>
@@ -373,7 +419,10 @@ function BookingTimeline({
             const isComment = event.eventType.includes("comment");
 
             return (
-              <article key={event._id} className="grid grid-cols-[auto_1fr] gap-3">
+              <article
+                key={event._id}
+                className="grid grid-cols-[auto_1fr] gap-3"
+              >
                 <div className="mt-1 flex size-8 items-center justify-center rounded-full border border-border bg-muted">
                   {isComment ? (
                     <MessageSquare className="size-4" />
@@ -381,6 +430,7 @@ function BookingTimeline({
                     <Clock className="size-4" />
                   )}
                 </div>
+
                 <div className="rounded-lg border border-border bg-muted/40 p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
@@ -390,15 +440,18 @@ function BookingTimeline({
                       {formatAuditTime(event.createdAt)}
                     </span>
                   </div>
+
                   <p className="mt-2 text-sm font-medium text-foreground">
                     {event.eventType === "booking.allocation_changed"
                       ? "Room allocation updated"
                       : event.message}
                   </p>
+
                   <p className="mt-1 text-xs text-muted-foreground">
                     {event.actorName ?? "System"}
                     {event.actorEmail ? ` · ${event.actorEmail}` : ""}
                   </p>
+
                   <TimelineDetails event={event} rooms={rooms} />
                 </div>
               </article>
@@ -412,15 +465,6 @@ function BookingTimeline({
       </div>
     </Card>
   );
-}
-
-function formatAuditTime(value?: number) {
-  if (!value) return "Not recorded";
-
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
 }
 
 function ManualAllocationPanel({
@@ -444,9 +488,8 @@ function ManualAllocationPanel({
   const [error, setError] = useState<string | null>(null);
 
   const hasAllocatedRooms = (request.assignedRoomIds ?? []).length > 0;
-  const [isEditingAllocation, setIsEditingAllocation] = useState(
-    !hasAllocatedRooms
-  );
+  const [isEditingAllocation, setIsEditingAllocation] =
+    useState(!hasAllocatedRooms);
 
   const selectedRoomIdSet = useMemo(
     () => new Set<string>(selectedRoomIds.map(String)),
@@ -517,9 +560,14 @@ function ManualAllocationPanel({
         allocationNotes: notes,
       });
 
+      toast.success("Room allocation saved.");
       setIsEditingAllocation(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to save allocation.");
+      const message =
+        caught instanceof Error ? caught.message : "Unable to save allocation.";
+
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -529,7 +577,9 @@ function ManualAllocationPanel({
     <div className="rounded-xl border border-border bg-muted/40 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-foreground">Allocation management</p>
+          <p className="text-sm font-medium text-foreground">
+            Allocation management
+          </p>
           <p className="text-xs text-muted-foreground">
             Last updated by {request.allocationUpdatedBy?.name ?? "unknown"} ·{" "}
             {formatAuditTime(request.allocationUpdatedAt)}
@@ -579,7 +629,9 @@ function ManualAllocationPanel({
         )}
 
         {selectedRooms.length === 0 ? (
-          <span className="text-sm text-muted-foreground">No rooms assigned.</span>
+          <span className="text-sm text-muted-foreground">
+            No rooms assigned.
+          </span>
         ) : null}
       </div>
 
@@ -602,6 +654,7 @@ function ManualAllocationPanel({
                 placeholder="Room, code, type, or campus"
               />
             </div>
+
             <div className="grid max-h-64 gap-2 overflow-auto rounded-lg border border-border bg-background p-2">
               {filteredRooms.map((room) => {
                 const selected = selectedRoomIdSet.has(String(room._id));
@@ -622,7 +675,8 @@ function ManualAllocationPanel({
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {room.roomType?.name ?? "Unknown type"} ·{" "}
-                      {room.campus?.name ?? "No campus"} · capacity {room.capacity}
+                      {room.campus?.name ?? "No campus"} · capacity{" "}
+                      {room.capacity}
                       {room.active ? "" : " · inactive"}
                     </span>
                   </button>
@@ -665,7 +719,9 @@ function ManualAllocationPanel({
               preview.conflicts.map((conflict, index) => (
                 <div
                   key={`${conflict.type}-${index}`}
-                  className={`rounded-lg border p-2 text-sm ${severityClass(conflict.severity)}`}
+                  className={`rounded-lg border p-2 text-sm ${severityClass(
+                    conflict.severity
+                  )}`}
                 >
                   <div className="flex gap-2">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -739,6 +795,23 @@ export function RequestDetail({
   const emailFromUrl = searchParams.get("email")?.trim() ?? "";
   const tenantSlug = auth?.tenantSlug ?? "";
 
+  const updateStatus = useMutation(api.bookings.updateStatus);
+  const addComment = useMutation(api.bookings.addComment);
+
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [overrideAction, setOverrideAction] = useState<{
+    status: "Approved" | "Completed";
+    title: string;
+    description: string;
+    overrideType: "conflict" | "completed";
+  } | null>(null);
+  const [reasonAction, setReasonAction] = useState<{
+    status: "Declined" | "Cancelled";
+    title: string;
+    description: string;
+  } | null>(null);
+  const [statusReason, setStatusReason] = useState("");
+
   const publicLookupArgs =
     publicView && emailFromUrl
       ? {
@@ -752,7 +825,11 @@ export function RequestDetail({
     publicView ? api.bookings.getPublicRequestByReference : api.bookings.getRequest,
     publicView
       ? publicLookupArgs
-      : { tenantSlug, auth: auth ?? {}, requestId: id as Id<"bookingRequests"> }
+      : {
+          tenantSlug,
+          auth: auth ?? {},
+          requestId: id as Id<"bookingRequests">,
+        }
   );
 
   const timeline = useQuery(
@@ -775,8 +852,107 @@ export function RequestDetail({
     publicView || !auth ? "skip" : { tenantSlug, auth, activeOnly: false }
   );
 
-  const updateStatus = useMutation(api.bookings.updateStatus);
-  const addComment = useMutation(api.bookings.addComment);
+  async function runStatusUpdate(args: {
+    status: StatusAction;
+    reason?: string;
+    allowConflictOverride?: boolean;
+    allowCompletedOverride?: boolean;
+  }) {
+    if (!request) return;
+
+    setStatusBusy(true);
+
+    try {
+      await updateStatus({
+        tenantSlug,
+        auth: auth ?? {},
+        requestId: request._id,
+        status: args.status,
+        reason: args.reason,
+        allowConflictOverride: args.allowConflictOverride,
+        allowCompletedOverride: args.allowCompletedOverride,
+      });
+
+      toast.success(`Booking moved to ${args.status.toLowerCase()}.`);
+    } catch (caught) {
+      toast.error(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to update booking status."
+      );
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
+  function hasBlockingConflicts() {
+    return (
+      request?.conflictMetadata?.conflicts?.some(
+        (conflict) => conflict.severity === "likely_unavailable"
+      ) ?? false
+    );
+  }
+
+  function bookingHasEnded() {
+    if (!request?.blocks?.length) return false;
+
+    const latestEnd = Math.max(
+      ...request.blocks.map((block) => Date.parse(block.end))
+    );
+
+    return Number.isFinite(latestEnd) && latestEnd <= Date.now();
+  }
+
+  function approveBooking() {
+    if (!request) return;
+
+    const assignedRooms = request.assignedRoomIds ?? [];
+
+    if (assignedRooms.length === 0) {
+      toast.error("Assign at least one room before approving this booking.");
+      return;
+    }
+
+    if (hasBlockingConflicts()) {
+      setOverrideAction({
+        status: "Approved",
+        title: "Approve with room conflict?",
+        description:
+          "This booking has blocking room conflicts and may double-book a room. Approve only if you are intentionally overriding the conflict warning.",
+        overrideType: "conflict",
+      });
+      return;
+    }
+
+    void runStatusUpdate({ status: "Approved" });
+  }
+
+  function completeBooking() {
+    if (!request) return;
+
+    if (!bookingHasEnded()) {
+      setOverrideAction({
+        status: "Completed",
+        title: "Complete before booking end time?",
+        description:
+          "This booking has not ended yet. Mark it as completed only if this is an intentional staff override.",
+        overrideType: "completed",
+      });
+      return;
+    }
+
+    void runStatusUpdate({ status: "Completed" });
+  }
+
+  function openReasonDialog(status: "Declined" | "Cancelled") {
+    setStatusReason("");
+    setReasonAction({
+      status,
+      title: status === "Declined" ? "Decline booking" : "Cancel booking",
+      description:
+        "You can add an optional reason or comment. This will be saved in the booking activity timeline.",
+    });
+  }
 
   async function onComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -786,15 +962,22 @@ export function RequestDetail({
 
     if (!bodyMarkdown) return;
 
-    await addComment({
-      tenantSlug,
-      auth: auth ?? {},
-      requestId: id as Id<"bookingRequests">,
-      bodyMarkdown,
-      internal: !publicView,
-    });
+    try {
+      await addComment({
+        tenantSlug,
+        auth: auth ?? {},
+        requestId: id as Id<"bookingRequests">,
+        bodyMarkdown,
+        internal: !publicView,
+      });
 
-    form.reset();
+      toast.success("Comment added.");
+      form.reset();
+    } catch (caught) {
+      toast.error(
+        caught instanceof Error ? caught.message : "Unable to add comment."
+      );
+    }
   }
 
   if (publicView && !emailFromUrl) {
@@ -1039,114 +1222,118 @@ export function RequestDetail({
         </div>
 
         <div className="grid content-start gap-5">
-          {!publicView ? (
-            request.bookingNoticeMetadata?.violations.length ? (
-              <Card>
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="font-semibold">Booking notice review</h2>
-                  <Badge
-                    variant="outline"
-                    className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+          {!publicView && request.bookingNoticeMetadata?.violations.length ? (
+            <Card>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="font-semibold">Booking notice review</h2>
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                >
+                  Additional approval
+                </Badge>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {request.bookingNoticeMetadata.violations.map((violation) => (
+                  <p
+                    key={violation.type}
+                    className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
                   >
-                    Additional approval
-                  </Badge>
-                </div>
-                <div className="mt-3 grid gap-2">
-                  {request.bookingNoticeMetadata.violations.map((violation) => (
-                    <p
-                      key={violation.type}
-                      className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-                    >
-                      {violation.message}
-                    </p>
-                  ))}
-                </div>
-                <div className="mt-3 grid gap-1 text-sm text-muted-foreground">
+                    {violation.message}
+                  </p>
+                ))}
+              </div>
+              <div className="mt-3 grid gap-1 text-sm text-muted-foreground">
+                <p>
+                  Policy mode:{" "}
+                  <span className="font-medium text-foreground">
+                    {request.bookingNoticeMetadata.rules.violationMode}
+                  </span>
+                </p>
+                <p>
+                  Override acknowledged:{" "}
+                  <span className="font-medium text-foreground">
+                    {request.bookingNoticeMetadata.overrideAcknowledged
+                      ? "Yes"
+                      : "No"}
+                  </span>
+                </p>
+                {request.bookingNoticeMetadata.overriddenByRole ? (
                   <p>
-                    Policy mode:{" "}
+                    Overridden by role:{" "}
                     <span className="font-medium text-foreground">
-                      {request.bookingNoticeMetadata.rules.violationMode}
+                      {request.bookingNoticeMetadata.overriddenByRole}
                     </span>
                   </p>
+                ) : null}
+                {request.bookingNoticeMetadata.overrideReason ? (
                   <p>
-                    Override acknowledged:{" "}
+                    Override reason:{" "}
                     <span className="font-medium text-foreground">
-                      {request.bookingNoticeMetadata.overrideAcknowledged
-                        ? "Yes"
-                        : "No"}
+                      {request.bookingNoticeMetadata.overrideReason}
                     </span>
                   </p>
-                  {request.bookingNoticeMetadata.overriddenByRole ? (
-                    <p>
-                      Overridden by role:{" "}
-                      <span className="font-medium text-foreground">
-                        {request.bookingNoticeMetadata.overriddenByRole}
-                      </span>
-                    </p>
-                  ) : null}
-                  {request.bookingNoticeMetadata.overrideReason ? (
-                    <p>
-                      Override reason:{" "}
-                      <span className="font-medium text-foreground">
-                        {request.bookingNoticeMetadata.overrideReason}
-                      </span>
-                    </p>
-                  ) : null}
-                </div>
-              </Card>
-            ) : null
+                ) : null}
+              </div>
+            </Card>
           ) : null}
 
           {!publicView ? (
             <Card>
               <h2 className="font-semibold">Workflow actions</h2>
+
               {request.conflictMetadata?.conflicts.length ? (
                 <p className="mt-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                  This request has availability warnings. Approval is still available
-                  for admin review.
+                  This request has availability warnings or conflicts. Approval
+                  may require a staff override.
                 </p>
               ) : null}
 
               <div className="mt-3 grid gap-2">
-                <button
-                  onClick={() =>
-                    updateStatus({
-                      tenantSlug,
-                      auth: auth ?? {},
-                      requestId: request._id,
-                      status: "Approved",
-                    })
-                  }
-                  className="rounded-xl border border-border px-3 py-2 text-sm font-medium"
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={approveBooking}
+                  disabled={statusBusy}
                 >
                   Approve
-                </button>
-                <button
-                  onClick={() =>
-                    updateStatus({
-                      tenantSlug,
-                      auth: auth ?? {},
-                      requestId: request._id,
-                      status: "Declined",
-                    })
-                  }
-                  className="rounded-xl border border-border px-3 py-2 text-sm font-medium"
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => openReasonDialog("Declined")}
+                  disabled={statusBusy}
                 >
                   Decline
-                </button>
-                <button
-                  onClick={() =>
-                    updateStatus({
-                      tenantSlug,
-                      auth: auth ?? {},
-                      requestId: request._id,
-                      status: "Pending",
-                    })
-                  }
-                  className="rounded-xl border border-border px-3 py-2 text-sm font-medium"
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => openReasonDialog("Cancelled")}
+                  disabled={statusBusy}
                 >
-                  Remain Pending
-                </button>
+                  Cancel
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void runStatusUpdate({ status: "Pending" })}
+                  disabled={statusBusy}
+                >
+                  Move to Pending
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={completeBooking}
+                  disabled={statusBusy}
+                >
+                  Mark Completed
+                </Button>
               </div>
             </Card>
           ) : null}
@@ -1158,7 +1345,9 @@ export function RequestDetail({
                 {request.conflictMetadata?.highestSeverity ? (
                   <Badge
                     variant="outline"
-                    className={severityClass(request.conflictMetadata.highestSeverity)}
+                    className={severityClass(
+                      request.conflictMetadata.highestSeverity
+                    )}
                   >
                     {severityLabel(request.conflictMetadata.highestSeverity)}
                   </Badge>
@@ -1179,7 +1368,9 @@ export function RequestDetail({
                 {request.conflictMetadata?.conflicts.map((conflict, index) => (
                   <div
                     key={`${conflict.type}-${index}`}
-                    className={`rounded-xl border p-3 text-sm ${severityClass(conflict.severity)}`}
+                    className={`rounded-xl border p-3 text-sm ${severityClass(
+                      conflict.severity
+                    )}`}
                   >
                     <div className="flex items-start gap-2">
                       {conflict.severity === "informational" ? (
@@ -1212,10 +1403,14 @@ export function RequestDetail({
                             </div>
                           ) : null}
                           {conflict.requestedQuantity !== undefined ? (
-                            <div>Requested quantity: {conflict.requestedQuantity}</div>
+                            <div>
+                              Requested quantity: {conflict.requestedQuantity}
+                            </div>
                           ) : null}
                           {conflict.availableQuantity !== undefined ? (
-                            <div>Available quantity: {conflict.availableQuantity}</div>
+                            <div>
+                              Available quantity: {conflict.availableQuantity}
+                            </div>
                           ) : null}
                           {conflict.missingQuantity !== undefined ? (
                             <div>Missing quantity: {conflict.missingQuantity}</div>
@@ -1237,8 +1432,8 @@ export function RequestDetail({
                 {request.conflictMetadata?.conflicts.length === 0 ||
                 !request.conflictMetadata ? (
                   <p className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-                    No conflicts detected against approved bookings, pending bookings,
-                    or blocked periods.
+                    No conflicts detected against approved bookings, pending
+                    bookings, or blocked periods.
                   </p>
                 ) : null}
               </div>
@@ -1253,6 +1448,111 @@ export function RequestDetail({
           </Card>
         </div>
       </div>
+
+      <AlertDialog
+        open={overrideAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setOverrideAction(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{overrideAction?.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {overrideAction?.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={statusBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={statusBusy}
+              onClick={() => {
+                if (!overrideAction) return;
+
+                const action = overrideAction;
+                setOverrideAction(null);
+
+                void runStatusUpdate({
+                  status: action.status,
+                  allowConflictOverride: action.overrideType === "conflict",
+                  allowCompletedOverride: action.overrideType === "completed",
+                });
+              }}
+            >
+              Continue with override
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={reasonAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReasonAction(null);
+            setStatusReason("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{reasonAction?.title}</DialogTitle>
+            <DialogDescription>{reasonAction?.description}</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-2">
+            <label
+              htmlFor="status-reason"
+              className="text-sm font-medium text-foreground"
+            >
+              Reason/comment optional
+            </label>
+            <Textarea
+              id="status-reason"
+              value={statusReason}
+              onChange={(event) => setStatusReason(event.currentTarget.value)}
+              placeholder="Add a short reason or leave blank."
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={statusBusy}
+              onClick={() => {
+                setReasonAction(null);
+                setStatusReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={statusBusy}
+              onClick={() => {
+                if (!reasonAction) return;
+
+                const action = reasonAction;
+                const reason = statusReason.trim();
+
+                setReasonAction(null);
+                setStatusReason("");
+
+                void runStatusUpdate({
+                  status: action.status,
+                  reason: reason || undefined,
+                });
+              }}
+            >
+              {reasonAction?.status === "Declined"
+                ? "Decline booking"
+                : "Cancel booking"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
