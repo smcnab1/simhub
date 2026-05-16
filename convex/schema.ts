@@ -18,8 +18,11 @@ export default defineSchema({
       v.union(v.literal("Block"), v.literal("Warn"))
     ),
     workosOrganizationId: v.optional(v.string()),
+    customDomain: v.optional(v.string()),
+    active: v.optional(v.boolean()),
   })
     .index("by_slug", ["slug"])
+    .index("by_custom_domain", ["customDomain"])
     .index("by_workos_org", ["workosOrganizationId"]),
 
   users: defineTable({

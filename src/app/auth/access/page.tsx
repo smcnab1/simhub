@@ -47,6 +47,8 @@ async function selectTenant(formData: FormData) {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
+    // TODO(subdomains): add domain=.rooms.simhq.app when this selector
+    // should persist across tenant subdomains.
     maxAge: 60 * 60 * 24 * 400,
   });
   redirect("/dashboard");

@@ -68,7 +68,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatBlockTime, formatRequestDate, formatRooms } from "@/lib/format";
-import { TENANT_SLUG } from "@/lib/config";
 import {
   formatBookingDuration,
   occupancyDurationMinutes,
@@ -653,8 +652,8 @@ function ManualAllocationPanel({
                         : "border-transparent bg-muted/30 text-foreground hover:bg-muted"
                     }`}
                   >
-                    <span className="font-medium">{formatRoomChip(room)}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">
+                    <span className="block break-words font-medium">{formatRoomChip(room)}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground sm:ml-2 sm:mt-0 sm:inline">
                       {room.roomType?.name ?? "Unknown type"} &middot;{" "}
                       {room.campus?.name ?? "No campus"} &middot; cap{" "}
                       {room.capacity}
@@ -737,12 +736,13 @@ function ManualAllocationPanel({
             <InlineError message={error} />
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col gap-2 border-t border-border bg-card/95 p-3 backdrop-blur sm:static sm:m-0 sm:flex-row sm:flex-wrap sm:border-0 sm:bg-transparent sm:p-0">
             <Button
               type="button"
               onClick={save}
               disabled={!hasChanges || saving}
               size="sm"
+              className="w-full sm:w-auto"
             >
               {saving ? (
                 <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
@@ -758,6 +758,7 @@ function ManualAllocationPanel({
                 setIsEditingAllocation(!hasAllocatedRooms);
               }}
               disabled={saving}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -777,19 +778,21 @@ function CollapsibleCard({
   icon: Icon,
   badge,
   defaultOpen = true,
+  className,
   children,
 }: {
   title: string;
   icon?: React.ComponentType<{ className?: string }>;
   badge?: React.ReactNode;
   defaultOpen?: boolean;
+  className?: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <Card>
+      <Card className={className}>
         <CollapsibleTrigger className="w-full text-left">
           <CardHeader className="border-b pb-3">
             <div className="flex items-center justify-between gap-2">
@@ -1035,16 +1038,18 @@ function SubmissionConfirmation({
 
 export function RequestDetail({
   id,
+  tenantSlug: publicTenantSlug,
   publicView = false,
 }: {
   id: string;
+  tenantSlug?: string;
   publicView?: boolean;
 }) {
   const auth = useOptionalDashboardAuth();
   const searchParams = useSearchParams();
   const emailFromUrl = searchParams.get("email")?.trim() ?? "";
   const isSubmissionConfirmation = publicView && searchParams.get("submitted") === "1";
-  const tenantSlug = auth?.tenantSlug ?? "";
+  const tenantSlug = publicView ? (publicTenantSlug ?? "") : (auth?.tenantSlug ?? "");
 
   // Role-based access
   const isStaffOrAbove =
@@ -1054,7 +1059,10 @@ export function RequestDetail({
 
   const updateStatus = useMutation(api.bookings.updateStatus);
   const addComment = useMutation(api.bookings.addComment);
-  const tenant = useQuery(api.tenants.getBySlug, { slug: TENANT_SLUG });
+  const tenant = useQuery(
+    api.tenants.getBySlug,
+    tenantSlug ? { slug: tenantSlug } : "skip"
+  );
 
   const [statusBusy, setStatusBusy] = useState(false);
   const [commentBusy, setCommentBusy] = useState(false);
@@ -1074,7 +1082,7 @@ export function RequestDetail({
   const publicLookupArgs =
     publicView && emailFromUrl
       ? {
-          tenantSlug: TENANT_SLUG,
+          tenantSlug,
           requestId: id as Id<"bookingRequests">,
           requesterEmail: emailFromUrl,
         }
@@ -1098,7 +1106,7 @@ export function RequestDetail({
     publicView
       ? emailFromUrl
         ? {
-            tenantSlug: TENANT_SLUG,
+            tenantSlug,
             bookingId: id as Id<"bookingRequests">,
             requesterEmail: emailFromUrl,
           }
@@ -1442,11 +1450,11 @@ export function RequestDetail({
       {/* ------------------------------------------------------------------ */}
       {/* Two-column layout                                                    */}
       {/* ------------------------------------------------------------------ */}
-      <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         {/* ================================================================ */}
         {/* Main column                                                        */}
         {/* ================================================================ */}
-        <div className="grid content-start gap-5">
+        <div className="order-2 grid min-w-0 content-start gap-5 xl:order-1">
           {/* -------------------------------------------------------------- */}
           {/* Booking overview                                                 */}
           {/* -------------------------------------------------------------- */}
@@ -1464,7 +1472,7 @@ export function RequestDetail({
                 <dt className="text-xs font-medium text-muted-foreground">
                   Email
                 </dt>
-                <dd className="mt-1 text-sm text-foreground">
+                <dd className="mt-1 break-words text-sm text-foreground">
                   {request.requesterEmail}
                 </dd>
               </div>
@@ -1472,7 +1480,7 @@ export function RequestDetail({
                 <dt className="text-xs font-medium text-muted-foreground">
                   Phone
                 </dt>
-                <dd className="mt-1 text-sm text-foreground">
+                <dd className="mt-1 break-words text-sm text-foreground">
                   {request.requesterPhone || (
                     <span className="italic text-muted-foreground">
                       Not provided
@@ -1492,7 +1500,7 @@ export function RequestDetail({
                 <dt className="text-xs font-medium text-muted-foreground">
                   CC emails
                 </dt>
-                <dd className="mt-1 text-sm text-foreground">
+                <dd className="mt-1 break-words text-sm text-foreground">
                   {request.ccEmails.length ? (
                     request.ccEmails.join(", ")
                   ) : (
@@ -1548,7 +1556,7 @@ export function RequestDetail({
                   <p className="mb-1.5 text-xs font-medium text-muted-foreground">
                     Additional details
                   </p>
-                  <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-foreground leading-relaxed">
+                  <p className="break-words rounded-lg bg-muted/50 px-3 py-2.5 text-sm leading-relaxed text-foreground">
                     {request.details}
                   </p>
                 </div>
@@ -1565,12 +1573,12 @@ export function RequestDetail({
                 (block: { label?: string; start: string; end: string }) => (
                   <li
                     key={`${block.label}-${block.start}`}
-                    className="flex items-start gap-3 rounded-lg bg-muted/40 px-3 py-2.5 text-sm"
+                    className="flex flex-col gap-1 rounded-lg bg-muted/40 px-3 py-2.5 text-sm sm:flex-row sm:items-start sm:gap-3"
                   >
                     <span className="mt-0.5 min-w-[4.5rem] text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       {block.label ?? "Block"}
                     </span>
-                    <span className="font-medium text-foreground">
+                    <span className="break-words font-medium text-foreground">
                       {formatBlockTime(block, request.timezone)}
                     </span>
                   </li>
@@ -1687,7 +1695,7 @@ export function RequestDetail({
                       <dt className="text-xs font-medium text-muted-foreground">
                         {field.label}
                       </dt>
-                      <dd className="mt-1 text-sm text-foreground">
+                      <dd className="mt-1 break-words text-sm text-foreground">
                         {field.value !== null &&
                         field.value !== undefined &&
                         String(field.value) !== "" ? (
@@ -1734,7 +1742,7 @@ export function RequestDetail({
                       key={comment._id}
                       className="rounded-xl border border-border bg-muted/30 p-4"
                     >
-                      <p className="text-sm leading-relaxed text-foreground">
+                      <p className="break-words text-sm leading-relaxed text-foreground">
                         {comment.bodyMarkdown}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1823,12 +1831,12 @@ export function RequestDetail({
         {/* ================================================================ */}
         {/* Sidebar column                                                     */}
         {/* ================================================================ */}
-        <div className="grid content-start gap-5">
+        <div className="order-1 grid min-w-0 content-start gap-5 xl:order-2">
           {/* -------------------------------------------------------------- */}
           {/* Workflow actions — staff/admin/developer only                    */}
           {/* -------------------------------------------------------------- */}
           {!publicView && isStaffOrAbove ? (
-            <CollapsibleCard title="Workflow actions" defaultOpen={true}>
+            <CollapsibleCard title="Workflow actions" defaultOpen={true} className="xl:sticky xl:top-24">
               {hasConflicts ? (
                 <div
                   className="mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
@@ -1845,7 +1853,7 @@ export function RequestDetail({
                 </div>
               ) : null}
 
-              <div className="grid gap-2">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -1911,7 +1919,7 @@ export function RequestDetail({
                   </TooltipContent>
                 </Tooltip>
 
-                <Separator />
+                <Separator className="sm:col-span-2 xl:col-span-1" />
 
                 <Tooltip>
                   <TooltipTrigger

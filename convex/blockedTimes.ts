@@ -18,15 +18,15 @@ export type BlockedTimeScope = (typeof BLOCKED_TIME_SCOPES)[number];
  */
 export const listBlockedTimes = query({
   args: {
-    tenantId: v.id("tenants"),
+    tenantSlug: v.string(),
+    auth: authContextValidator,
     includeAllStatuses: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    // Direct tenant ID queries are for internal use (e.g., from calendar component)
-    // The caller should have already verified tenant access
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const blocks = await ctx.db
       .query("blockedTimes")
-      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
       .collect();
 
     // Filter by status unless includeAllStatuses is true
@@ -94,14 +94,16 @@ export const listBlockedTimes = query({
  */
 export const listBlockedTimesForCalendar = query({
   args: {
-    tenantId: v.id("tenants"),
+    tenantSlug: v.string(),
+    auth: authContextValidator,
     rangeStart: v.string(),
     rangeEnd: v.string(),
   },
   handler: async (ctx, args) => {
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const blocks = await ctx.db
       .query("blockedTimes")
-      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
       .collect();
 
     const rangeStartTime = new Date(args.rangeStart).getTime();
@@ -357,12 +359,14 @@ export const cancelBlockedTime = mutation({
  */
 export const countActiveBlockedTimes = query({
   args: {
-    tenantId: v.id("tenants"),
+    tenantSlug: v.string(),
+    auth: authContextValidator,
   },
   handler: async (ctx, args) => {
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const blocks = await ctx.db
       .query("blockedTimes")
-      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
       .collect();
 
     const now = Date.now();

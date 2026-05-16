@@ -32,6 +32,41 @@ Useful commands:
 npx convex dev --once
 ```
 
+## Tenant Domains
+
+SimHQ Rooms resolves tenants from the request host:
+
+- `rooms.simhq.app` is the product root and does not select a tenant.
+- `{tenantSlug}.rooms.simhq.app` selects an active tenant by `tenants.slug`.
+- Local development supports `http://localhost:3000?tenant=demo` and
+  `http://demo.localhost:3000`.
+- Future custom domains resolve through `tenants.customDomain` when populated.
+
+Tenant slugs must be lowercase URL-safe values. Reserved slugs are `www`,
+`app`, `api`, `admin`, `dashboard`, `login`, `auth`, and `rooms`.
+
+Required app environment:
+
+```bash
+SIMHQ_ROOMS_ROOT_DOMAIN=rooms.simhq.app
+NEXT_PUBLIC_CONVEX_URL=...
+WORKOS_CLIENT_ID=...
+WORKOS_API_KEY=...
+WORKOS_COOKIE_PASSWORD=...
+WORKOS_COOKIE_NAME=wos-session
+# Optional, for cross-subdomain staff sessions:
+WORKOS_COOKIE_DOMAIN=.rooms.simhq.app
+```
+
+Vercel setup:
+
+- Add `rooms.simhq.app` and wildcard `*.rooms.simhq.app` to the project.
+- Point DNS for the root and wildcard tenant domains at Vercel.
+- Add WorkOS redirect URLs for `https://rooms.simhq.app/auth/callback` and any
+  tenant callback hosts that will initiate login.
+- Set `WORKOS_COOKIE_DOMAIN=.rooms.simhq.app` only when sessions should be
+  shared across tenant subdomains.
+
 ## Campus Lifecycle and Sorting
 
 Campuses/sites are tenant-scoped locations managed by Admins and Developers at

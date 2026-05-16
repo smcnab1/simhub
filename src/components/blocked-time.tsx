@@ -174,12 +174,10 @@ type Campus = {
 // ─── Blocked Time Form ────────────────────────────────────────────────────────
 
 export function BlockedTimeForm({
-  tenantId,
   onSuccess,
   onCancel,
   initialData,
 }: {
-  tenantId: Id<"tenants">;
   onSuccess?: () => void;
   onCancel?: () => void;
   initialData?: Partial<BlockedTimeFormData>;
@@ -555,12 +553,10 @@ export function BlockedTimeForm({
 // ─── Blocked Time Dialog ──────────────────────────────────────────────────────
 
 export function BlockedTimeDialog({
-  tenantId,
   open,
   onOpenChange,
   initialData,
 }: {
-  tenantId: Id<"tenants">;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialData?: Partial<BlockedTimeFormData>;
@@ -578,7 +574,6 @@ export function BlockedTimeDialog({
           </DialogDescription>
         </DialogHeader>
         <BlockedTimeForm
-          tenantId={tenantId}
           initialData={initialData}
           onSuccess={() => onOpenChange(false)}
           onCancel={() => onOpenChange(false)}
@@ -699,14 +694,15 @@ export function BlockedTimeCard({
 // ─── Blocked Time List ────────────────────────────────────────────────────────
 
 export function BlockedTimeList({
-  tenantId,
   onCancel,
 }: {
-  tenantId: Id<"tenants">;
   onCancel?: (id: Id<"blockedTimes">) => void;
 }) {
+  const auth = useDashboardAuth();
+  const tenantSlug = auth.tenantSlug;
   const blockedTimes = useQuery(api.blockedTimes.listBlockedTimes, {
-    tenantId,
+    tenantSlug,
+    auth,
     includeAllStatuses: true,
   });
 

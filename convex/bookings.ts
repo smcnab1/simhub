@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { action, mutation, query } from "./_generated/server";
+import { action, internalQuery, mutation, query } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -1966,13 +1966,18 @@ export const addComment = mutation({
 
 export const validateAvailability = action({
   args: {
-    tenantId: v.id("tenants"),
+    tenantSlug: v.string(),
+    auth: authContextValidator,
     blocks: v.array(v.object({ start: v.string(), end: v.string() })),
     roomTypeRequests: v.array(v.object({ roomTypeId: v.id("roomTypes"), quantity: v.number() })),
   },
   handler: async (ctx, args): Promise<{ available: boolean; reason?: string }> => {
-    const snapshot = await ctx.runQuery(api.bookings.internalAvailabilitySnapshot, {
-      tenantId: args.tenantId,
+    const { tenant } = await ctx.runQuery(api.bookings.resolveTenantForAvailability, {
+      tenantSlug: args.tenantSlug,
+      auth: args.auth,
+    });
+    const snapshot = await ctx.runQuery(internal.bookings.internalAvailabilitySnapshot, {
+      tenantId: tenant._id,
     });
     const result = checkAvailabilityConflicts({
       blocks: args.blocks,
@@ -1990,21 +1995,28 @@ export const validateAvailability = action({
   },
 });
 
-export const internalAvailabilitySnapshot = query({
+export const resolveTenantForAvailability = query({
+  args: { tenantSlug: v.string(), auth: authContextValidator },
+  handler: async (ctx, args) => {
+    return await requireStaff(ctx, args.tenantSlug, args.auth);
+  },
+});
+
+export const internalAvailabilitySnapshot = internalQuery({
   args: { tenantId: v.id("tenants") },
   handler: async (ctx, args) => {
     return availabilityResources(ctx, args.tenantId);
   },
 });
 
-export const internalApprovedRequests = query({
+export const internalApprovedRequests = internalQuery({
   args: { tenantId: v.id("tenants") },
   handler: async (ctx, args) => {
     return await ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", args.tenantId).eq("status", "Approved")).collect();
   },
 });
 
-export const internalActiveRooms = query({
+export const internalActiveRooms = internalQuery({
   args: { tenantId: v.id("tenants") },
   handler: async (ctx, args) => {
     const rooms = await ctx.db
@@ -2031,7 +2043,7 @@ export const internalActiveRooms = query({
   },
 });
 
-export const internalRoomTypes = query({
+export const internalRoomTypes = internalQuery({
   args: { tenantId: v.id("tenants") },
   handler: async (ctx, args) => {
     const roomTypes = await ctx.db

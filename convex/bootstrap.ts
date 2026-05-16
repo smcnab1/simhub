@@ -126,6 +126,7 @@ async function upsertTenant(ctx: MutationCtx, seed: TenantSeed) {
     maximumAdvanceBookingDays: seed.maximumAdvanceBookingDays,
     bookingNoticeViolationMode: seed.bookingNoticeViolationMode ?? "Block",
     workosOrganizationId: seed.workosOrganizationId,
+    active: true,
   };
 
   if (existing) {

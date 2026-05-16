@@ -597,7 +597,98 @@ export function CampusesAdmin() {
         ) : filteredCampuses.length === 0 && hasFilters ? (
           <NoResults query={query.trim() || statusFilter} />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="grid gap-3 p-3 md:hidden">
+            {filteredCampuses.map((campus) => {
+              const isActive = campus.active !== false;
+              const orderIndex = orderedCampuses.findIndex(
+                (item) => item._id === campus._id
+              );
+
+              return (
+                <article key={campus._id} className={!isActive ? "rounded-xl border border-border bg-card p-3 opacity-70" : "rounded-xl border border-border bg-card p-3"}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <StatusDot active={isActive} />
+                        <h3 className="break-words text-sm font-semibold text-foreground">{campus.name}</h3>
+                      </div>
+                      <p className="mt-1 break-words text-sm text-muted-foreground">
+                        {campusLocationSummary(campus) || "No address"}
+                      </p>
+                      {campus.details ? (
+                        <p className="mt-1 break-words text-xs text-muted-foreground/80">
+                          {campus.details}
+                        </p>
+                      ) : null}
+                    </div>
+                    <StatusBadge status={isActive ? "Active" : "Inactive"} />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-9"
+                        onClick={() => moveCampus(campus, -1)}
+                        disabled={reordering || orderIndex <= 0}
+                        aria-label={`Move ${campus.name} up`}
+                      >
+                        <ArrowUpIcon className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-9"
+                        onClick={() => moveCampus(campus, 1)}
+                        disabled={
+                          reordering ||
+                          orderIndex < 0 ||
+                          orderIndex >= orderedCampuses.length - 1
+                        }
+                        aria-label={`Move ${campus.name} down`}
+                      >
+                        <ArrowDownIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-9"
+                        onClick={() => handleEdit(campus)}
+                        aria-label={`Edit ${campus.name}`}
+                      >
+                        <PencilIcon className="size-3.5" />
+                      </Button>
+                      {isActive ? (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="size-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setArchiveTarget(campus)}
+                          aria-label={`Archive ${campus.name}`}
+                        >
+                          <ArchiveIcon className="size-3.5" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="size-9"
+                          onClick={() => handleRestore(campus)}
+                          aria-label={`Restore ${campus.name}`}
+                        >
+                          <RotateCcwIcon className="size-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -714,6 +805,7 @@ export function CampusesAdmin() {
               </TableBody>
             </Table>
           </div>
+          </>
         )}
       </AdminSettingsCard>
 

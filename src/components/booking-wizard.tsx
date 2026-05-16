@@ -42,7 +42,6 @@ import {
   type RoomSelectionMode,
   type RoomTypeRequest,
 } from "@/lib/booking-logic";
-import { TENANT_SLUG } from "@/lib/config";
 
 function value(form: HTMLFormElement, name: string) {
   return String(new FormData(form).get(name) ?? "").trim();
@@ -198,11 +197,11 @@ function OptionCardSkeletons({ count = 3 }: { count?: number }) {
   );
 }
 
-export function BookingWizard() {
+export function BookingWizard({ tenantSlug }: { tenantSlug: string }) {
   const auth = useOptionalDashboardAuth();
-  const tenant = useQuery(api.tenants.getBySlug, { slug: TENANT_SLUG });
-  const campuses = useQuery(api.tenants.listCampuses, { tenantSlug: TENANT_SLUG });
-  const formConfig = useQuery(api.tenants.getFormConfig, { tenantSlug: TENANT_SLUG });
+  const tenant = useQuery(api.tenants.getBySlug, { slug: tenantSlug });
+  const campuses = useQuery(api.tenants.listCampuses, { tenantSlug });
+  const formConfig = useQuery(api.tenants.getFormConfig, { tenantSlug });
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const createRequest = useMutation(api.bookings.createRequest);
   const fields = formConfig?.fields ?? [];
@@ -223,8 +222,8 @@ export function BookingWizard() {
     sessionEnd: "",
   });
   const [roomQuantities, setRoomQuantities] = useState<Record<string, number>>({});
-  const roomTypes = useQuery(api.tenants.listRoomTypes, { tenantSlug: TENANT_SLUG, campusId: campusId || undefined });
-  const rooms = useQuery(api.tenants.listRooms, { tenantSlug: TENANT_SLUG, campusId: campusId || undefined });
+  const roomTypes = useQuery(api.tenants.listRoomTypes, { tenantSlug, campusId: campusId || undefined });
+  const rooms = useQuery(api.tenants.listRooms, { tenantSlug, campusId: campusId || undefined });
   const initialLoading = tenant === undefined || campuses === undefined || formConfig === undefined;
   const roomsLoading = rooms === undefined;
   const roomTypesLoading = roomTypes === undefined;
@@ -411,7 +410,7 @@ export function BookingWizard() {
     () =>
       bookingBlocks && !roomSelectionError && !timeError
         ? {
-            tenantSlug: TENANT_SLUG,
+            tenantSlug,
             auth: auth ?? undefined,
             overrideAcknowledged,
             roomSelectionMode,
@@ -428,7 +427,7 @@ export function BookingWizard() {
                 : [],
           }
         : null,
-    [auth, bookingBlocks, overrideAcknowledged, requestedRoomIds, roomSelectionError, roomSelectionMode, selectedRoomTypeRequests, timeError]
+    [auth, bookingBlocks, overrideAcknowledged, requestedRoomIds, roomSelectionError, roomSelectionMode, selectedRoomTypeRequests, tenantSlug, timeError]
   );
   const availabilityRequestKey = useMemo(
     () => (availabilityRequest ? JSON.stringify(availabilityRequest) : ""),
@@ -465,7 +464,7 @@ export function BookingWizard() {
     const ids: Id<"_storage">[] = [];
 
     for (const file of Array.from(files)) {
-      const url = await generateUploadUrl({ tenantSlug: TENANT_SLUG, sizeBytes: file.size });
+      const url = await generateUploadUrl({ tenantSlug, sizeBytes: file.size });
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": file.type || "application/octet-stream" },
@@ -532,7 +531,7 @@ export function BookingWizard() {
       const attachmentStorageIds = await uploadFiles(attachmentInput?.files ?? null);
       const requesterEmail = value(form, "requesterEmail");
       const requestId = await createRequest({
-        tenantSlug: TENANT_SLUG,
+        tenantSlug,
         auth: auth ?? undefined,
         overrideAcknowledged,
         overrideReason: overrideReason.trim() || undefined,
@@ -649,13 +648,13 @@ export function BookingWizard() {
                 Select exact rooms or request a room type and quantity for admin allocation.
               </p>
             </div>
-            <div className="grid grid-cols-2 rounded-lg border border-border bg-muted/40 p-1 text-sm">
+            <div className="grid w-full grid-cols-1 rounded-lg border border-border bg-muted/40 p-1 text-sm min-[420px]:grid-cols-2 sm:w-auto">
               {(["SpecificRooms", "RoomTypeQuantity"] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setSelectionMode(mode)}
-                  className={`rounded-md px-3 py-2 font-medium transition ${
+                  className={`min-h-10 rounded-md px-3 py-2 font-medium transition ${
                     roomSelectionMode === mode
                       ? "bg-background text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
@@ -702,7 +701,7 @@ export function BookingWizard() {
                       key={room._id}
                       type="button"
                       onClick={() => toggleRequestedRoom(room._id)}
-                      className={`rounded-xl border p-3 text-left transition hover:border-ring ${
+                      className={`min-h-32 rounded-xl border p-3 text-left transition hover:border-ring ${
                         selected
                           ? "border-primary bg-primary/10 text-foreground"
                           : "border-border bg-card text-foreground"
@@ -710,7 +709,7 @@ export function BookingWizard() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="font-medium">{room.name}</p>
+                          <p className="break-words font-medium">{room.name}</p>
                           <p className="mt-1 font-mono text-xs text-muted-foreground">{room.code}</p>
                         </div>
                         <span className={`grid size-6 shrink-0 place-items-center rounded-full border ${selected ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
@@ -754,8 +753,8 @@ export function BookingWizard() {
                 return (
                   <label key={roomType._id} className="rounded-xl border border-border p-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">{roomType.name}</p>
+                      <div className="min-w-0">
+                        <p className="break-words font-medium text-foreground">{roomType.name}</p>
                         {roomType.description ? <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{roomType.description}</p> : null}
                       </div>
                       <input
@@ -768,7 +767,7 @@ export function BookingWizard() {
                         value={quantity}
                         onInput={(event) => setRoomQuantity(roomType._id, event.currentTarget.value)}
                         onChange={(event) => setRoomQuantity(roomType._id, event.currentTarget.value)}
-                        className="h-10 w-20 rounded-lg border border-input bg-background px-3 text-right text-sm font-medium text-foreground shadow-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        className="h-10 w-20 shrink-0 rounded-lg border border-input bg-background px-3 text-right text-sm font-medium text-foreground shadow-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                       />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
@@ -968,12 +967,12 @@ export function BookingWizard() {
               <InlineError message={formError} />
             </div>
           ) : null}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button disabled={submitting || bookingNoticeBlocksSubmission} className={primaryButtonClass}>
+          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-card/95 p-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+            <button disabled={submitting || bookingNoticeBlocksSubmission} className={`${primaryButtonClass} w-full sm:w-auto`}>
               {submitting ? "Submitting..." : "Submit request"}
             </button>
-            <Link href="/calendar" className={subtleButtonClass}>Back to calendar</Link>
-            {status ? <span className="text-sm text-muted-foreground">{status}</span> : null}
+            <Link href="/calendar" className={`${subtleButtonClass} w-full sm:w-auto`}>Back to calendar</Link>
+            {status ? <span className="text-sm text-muted-foreground sm:ml-1">{status}</span> : null}
             {trackingId ? <Link href={`/requests/${trackingId}`} className="text-sm font-semibold text-primary">View tracking page</Link> : null}
           </div>
         </Card>

@@ -779,7 +779,64 @@ export function RoomsAdmin() {
           ) : filteredRooms.length === 0 ? (
             <NoResults query={search} />
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="grid gap-3 p-3 md:hidden">
+              {filteredRooms.map((room) => (
+                <article key={room._id} className="rounded-xl border border-border bg-card p-3">
+                  <div className="flex items-start gap-3">
+                    <RoomThumbnail room={room as Room} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusDot active={room.active} />
+                        <h3 className="break-words text-sm font-semibold text-foreground">{room.name}</h3>
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold text-muted-foreground">
+                          {room.code}
+                        </span>
+                      </div>
+                      {room.description ? (
+                        <p className="mt-1 break-words text-xs text-muted-foreground">{room.description}</p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                        <StatusBadge status={room.active ? "Active" : "Inactive"} />
+                        <span className="rounded-full border border-border px-2 py-1 text-muted-foreground">
+                          {room.campus?.name ?? "No campus"}
+                        </span>
+                        <span className="rounded-full border border-border px-2 py-1 text-muted-foreground">
+                          {room.roomType?.name ?? "Unknown type"}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-muted-foreground">
+                          <UsersIcon className="size-3" /> {room.capacity}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="sticky bottom-0 -mx-3 -mb-3 mt-3 flex justify-end gap-1.5 border-t border-border bg-card/95 p-3">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-9"
+                      onClick={() => {
+                        setEditingRoom(room as unknown as Room);
+                        setDialogOpen(true);
+                      }}
+                      aria-label={`Edit ${room.name}`}
+                    >
+                      <PencilIcon className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setDeleteTarget(room as unknown as Room)}
+                      aria-label={`Archive ${room.name}`}
+                    >
+                      <ArchiveIcon className="size-3.5" />
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -864,6 +921,7 @@ export function RoomsAdmin() {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </AdminSettingsCard>
       )}

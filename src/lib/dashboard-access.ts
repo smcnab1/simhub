@@ -10,6 +10,7 @@ import {
   TENANT_SLUG,
 } from "@/lib/config";
 import type { Role } from "@/lib/domain";
+import { getTenantHostResolution } from "@/lib/tenant-resolver";
 
 type DashboardAccessOptions = {
   requiredRole?: "tenant" | "staff" | "admin" | "developer";
@@ -23,10 +24,11 @@ export type DashboardAccess =
         tenantName?: string;
         role: Role;
         memberships: Array<{
-          tenantName: string;
-          tenantSlug: string;
-          role: Role;
-        }>;
+        tenantName: string;
+        tenantSlug: string;
+        role: Role;
+        customDomain?: string;
+      }>;
         workosUserId?: string;
         email?: string;
         workosOrganizationId?: string;
@@ -64,7 +66,14 @@ export async function getDashboardAccess({
     auth: authIdentity,
   });
   const cookieStore = await cookies();
+  const hostTenant = await getTenantHostResolution();
   const selectedSlug =
+    (hostTenant.kind === "slug" ? hostTenant.tenantSlug : null) ||
+    (hostTenant.kind === "custom"
+      ? memberships.find(
+          (membership) => membership.customDomain === hostTenant.customHost
+        )?.tenantSlug
+      : null) ||
     cookieStore.get(TENANT_COOKIE_NAME)?.value ||
     cookieStore.get(LEGACY_TENANT_COOKIE_NAME)?.value ||
     TENANT_SLUG;

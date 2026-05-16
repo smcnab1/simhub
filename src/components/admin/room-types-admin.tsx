@@ -603,7 +603,75 @@ export function RoomTypesAdmin() {
                 <p className="mt-1 text-xs text-muted-foreground">Try a different search term or status.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              <div className="grid gap-3 p-3 md:hidden">
+                {filteredRoomTypes.map((rt) => (
+                  <article key={rt._id} className="rounded-xl border border-border bg-card p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusDot active={rt.active} />
+                          <h3 className="break-words text-sm font-semibold text-foreground">{rt.name}</h3>
+                          {rt.specialRoom && (
+                            <Badge variant="outline" className="bg-primary/10 py-0 text-[10px] text-primary">
+                              <SparklesIcon className="size-2.5" />
+                              Special
+                            </Badge>
+                          )}
+                        </div>
+                        {rt.description ? (
+                          <p className="mt-1 break-words text-xs text-muted-foreground">{rt.description}</p>
+                        ) : null}
+                      </div>
+                      <StatusBadge status={rt.active ? "Active" : "Inactive"} />
+                    </div>
+                    <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-muted/40 p-2">
+                        <dt className="text-muted-foreground">Campus</dt>
+                        <dd className="mt-0.5 font-medium text-foreground">{rt.campus?.name ?? "All campuses"}</dd>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 p-2">
+                        <dt className="text-muted-foreground">Rooms</dt>
+                        <dd className="mt-0.5 font-medium text-foreground">{rt.activeRoomCount}/{rt.roomCount}</dd>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 p-2">
+                        <dt className="text-muted-foreground">Capacity</dt>
+                        <dd className="mt-0.5 font-medium text-foreground">{rt.defaultCapacity}</dd>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 p-2">
+                        <dt className="text-muted-foreground">Buffers</dt>
+                        <dd className="mt-0.5 font-medium text-foreground">{rt.standardSetupMinutes ?? 30}+{rt.standardCleanupMinutes ?? 30} min</dd>
+                      </div>
+                    </dl>
+                    <div className="sticky bottom-0 -mx-3 -mb-3 mt-3 flex justify-end gap-1.5 border-t border-border bg-card/95 p-3">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-9"
+                        onClick={() => {
+                          setEditingType(rt as unknown as RoomTypeWithCounts);
+                          setDialogOpen(true);
+                        }}
+                        aria-label={`Edit ${rt.name}`}
+                      >
+                        <PencilIcon className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() =>
+                          setDeleteTarget(rt as unknown as RoomTypeWithCounts)
+                        }
+                        aria-label={`Archive ${rt.name}`}
+                      >
+                        <ArchiveIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -713,6 +781,7 @@ export function RoomTypesAdmin() {
               </TableBody>
             </Table>
               </div>
+              </>
             )}
           </div>
         )}

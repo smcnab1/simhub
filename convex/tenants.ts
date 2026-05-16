@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { authContextValidator, membershipsForAuth, requireAdmin, requireStaff, tenantBySlug } from "./authz";
+import { authContextValidator, membershipsForAuth, requireAdmin, requireStaff, tenantByCustomDomain, tenantBySlug } from "./authz";
 import {
   campusIsActive,
   normalizeCampusName,
@@ -93,11 +93,12 @@ async function roomTypeIsPubliclySelectable(
 
 export const getBySlug = query({
   args: { slug: v.string() },
-  handler: async (ctx, args) =>
-    ctx.db
-      .query("tenants")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .unique(),
+  handler: async (ctx, args) => tenantBySlug(ctx, args.slug),
+});
+
+export const getByCustomDomain = query({
+  args: { customDomain: v.string() },
+  handler: async (ctx, args) => tenantByCustomDomain(ctx, args.customDomain),
 });
 
 export const listMembershipsForAuth = query({
@@ -111,6 +112,7 @@ export const listMembershipsForAuth = query({
         tenantName: tenant.name,
         tenantSlug: tenant.slug,
         workosOrganizationId: tenant.workosOrganizationId,
+        customDomain: tenant.customDomain,
         userId: user._id,
         role: user.role,
       }))

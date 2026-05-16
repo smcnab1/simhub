@@ -330,7 +330,7 @@ export function AccountsAdmin() {
                 <div
                   key={user._id}
                   className={cn(
-                    "flex items-center gap-3 px-5 py-3.5 transition-colors",
+                    "flex flex-wrap items-center gap-3 px-4 py-3.5 transition-colors sm:flex-nowrap sm:px-5",
                     editingId === user._id && "bg-muted/50"
                   )}
                 >
@@ -351,14 +351,14 @@ export function AccountsAdmin() {
 
                   <span
                     className={cn(
-                      "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                      "ml-12 shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium sm:ml-0",
                       roleColors[user.role as Role]
                     )}
                   >
                     {user.role}
                   </span>
 
-                  <div className="flex items-center gap-1">
+                  <div className="ml-auto flex items-center gap-1">
                     {user.role === "Developer" ? null : (
                       <>
                         <Button

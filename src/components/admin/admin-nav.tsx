@@ -62,7 +62,7 @@ export function AdminNavPills({ className }: { className?: string }) {
     <nav
       aria-label="Admin navigation"
       className={cn(
-        "flex flex-wrap gap-1.5 pb-4 border-b border-border",
+        "flex gap-1.5 overflow-x-auto border-b border-border pb-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         className
       )}
     >
@@ -78,7 +78,7 @@ export function AdminNavPills({ className }: { className?: string }) {
             key={item.url}
             href={item.url}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+              "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
               isActive
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"

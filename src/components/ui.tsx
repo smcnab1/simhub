@@ -10,26 +10,33 @@ export const sectionCardClass = "app-surface rounded-2xl p-4";
 export const adminPanelClass = "rounded-xl border border-border bg-card text-card-foreground shadow-sm";
 export const tableContainerClass = "overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm";
 export const statCardClass = "app-surface rounded-2xl p-4";
-export const formFieldClass = "mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground";
-export const subtleButtonClass = "inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50";
-export const primaryButtonClass = "inline-flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60";
+export const formFieldClass = "mt-1 w-full min-w-0 rounded-xl border border-input bg-background px-3 py-2 text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground";
+export const subtleButtonClass = "inline-flex min-h-10 items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50";
+export const primaryButtonClass = "inline-flex min-h-10 items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60";
 export const emptyStateClass = "rounded-2xl border border-dashed border-border bg-muted/40 p-5 text-sm text-muted-foreground";
 
 export function PageShell({ children }: { children: ReactNode }) {
   return <main className={pageWrapClass}>{children}</main>;
 }
 
-export function PublicNav() {
+export function PublicNav({ tenantName }: { tenantName?: string }) {
+  const displayName = tenantName ?? APP_NAME;
+  const hasTenant = Boolean(tenantName);
+
   return (
     <header className="sticky top-0 z-30 border-b border-border/80 bg-card/90 backdrop-blur-xl">
       <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-tight">
           <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">S</span>
-          {APP_NAME}
+          {displayName}
         </Link>
         <div className="flex items-center gap-2 text-sm">
-          <Link href="/calendar" className="rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary">Calendar</Link>
-          <Link href="/book" className="rounded-lg bg-primary px-3 py-2 font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">Book a Room</Link>
+          {hasTenant ? (
+            <>
+              <Link href="/calendar" className="rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary">Calendar</Link>
+              <Link href="/book" className="rounded-lg bg-primary px-3 py-2 font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">Book a Room</Link>
+            </>
+          ) : null}
           <a href="/auth/sign-in?returnTo=/dashboard" className="hidden rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary sm:inline-flex">Staff sign in</a>
           <ThemeToggle />
         </div>

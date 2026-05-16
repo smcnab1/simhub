@@ -80,10 +80,23 @@ function organizationIdFromAuth(auth: ConvexAuthContext) {
 }
 
 export async function tenantBySlug(ctx: Ctx, slug: string) {
-  return await ctx.db
+  const tenant = await ctx.db
     .query("tenants")
-    .withIndex("by_slug", (q) => q.eq("slug", slug))
+    .withIndex("by_slug", (q) => q.eq("slug", slug.trim().toLowerCase()))
     .unique();
+
+  return tenant?.active === false ? null : tenant;
+}
+
+export async function tenantByCustomDomain(ctx: Ctx, customDomain: string) {
+  const tenant = await ctx.db
+    .query("tenants")
+    .withIndex("by_custom_domain", (q) =>
+      q.eq("customDomain", customDomain.trim().toLowerCase())
+    )
+    .unique();
+
+  return tenant?.active === false ? null : tenant;
 }
 
 export async function tenantByWorkOSOrganizationId(

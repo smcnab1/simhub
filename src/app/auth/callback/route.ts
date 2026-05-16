@@ -15,6 +15,8 @@ function cookieSettings(requestUrl: string) {
     path: "/",
     sameSite: "lax" as const,
     secure: url.protocol === "https:",
+    // TODO(subdomains): set WORKOS_COOKIE_DOMAIN=.rooms.simhq.app in production
+    // if staff sessions should roam across tenant subdomains.
     ...(process.env.WORKOS_COOKIE_DOMAIN ? { domain: process.env.WORKOS_COOKIE_DOMAIN } : {}),
   };
 }

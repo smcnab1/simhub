@@ -60,7 +60,7 @@ export function AdminPageHeader({
       )}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             {title}
           </h1>
@@ -71,7 +71,7 @@ export function AdminPageHeader({
           )}
         </div>
         {actions && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end [&>*]:min-h-10 max-sm:[&>*]:flex-1">
             {actions}
           </div>
         )}

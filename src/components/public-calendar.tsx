@@ -9,7 +9,6 @@ import { api } from "../../convex/_generated/api";
 import { EmptyState } from "@/components/app-state";
 import { Card, SectionHeader, emptyStateClass, subtleButtonClass } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TENANT_SLUG } from "@/lib/config";
 import { localDateString } from "@/lib/date-time";
 import { formatTimeRange } from "@/lib/format";
 
@@ -134,10 +133,10 @@ function EventListSkeleton() {
 }
 
 export function PublicCalendar({
-  tenantSlug = TENANT_SLUG,
+  tenantSlug,
   initialMonth,
 }: {
-  tenantSlug?: string;
+  tenantSlug: string;
   initialMonth?: string;
 }) {
   const [month, setMonth] = useState(() => normalizeMonth(initialMonth));

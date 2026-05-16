@@ -16,7 +16,7 @@ interface AdminShellProps {
  */
 export function AdminShell({ children, className }: AdminShellProps) {
   return (
-    <div className={cn("flex w-full gap-8", className)}>
+    <div className={cn("flex w-full min-w-0 gap-6 xl:gap-8", className)}>
       {/* Sidebar – hidden below lg */}
       <aside
         aria-label="Admin sidebar"
@@ -31,7 +31,7 @@ export function AdminShell({ children, className }: AdminShellProps) {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 flex flex-col gap-6">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col gap-6">{children}</main>
     </div>
   );
 }

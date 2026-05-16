@@ -37,6 +37,8 @@ export async function switchTenant(formData: FormData) {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
+    // TODO(subdomains): add domain=.rooms.simhq.app when tenant switch state
+    // should be shared between tenant subdomains.
     maxAge: 60 * 60 * 24 * 400,
   });
   redirect("/dashboard");

@@ -599,6 +599,96 @@ function UnallocatedPanel({ bookings }: { bookings: CalendarRequest[] }) {
   );
 }
 
+function MobileAgenda({
+  bookings,
+  rooms,
+  blockedTimes,
+  tenantTimezone,
+}: {
+  bookings: CalendarRequest[];
+  rooms: CalendarRoom[];
+  blockedTimes: CalendarBlockedTime[];
+  tenantTimezone: string;
+}) {
+  const roomMap = new Map(rooms.map((room) => [room._id, room]));
+  const bookingsById = new Map(bookings.map((booking) => [booking._id, booking]));
+  const blockedItems = blockedTimes.map((blocked) => ({
+    id: `blocked-${blocked._id}`,
+    kind: "blocked" as const,
+    start: new Date(blocked.start).getTime(),
+    blocked,
+  }));
+  const bookingItems = bookings.map((booking) => ({
+    id: booking._id,
+    kind: "booking" as const,
+    start: getBookingWindow(booking.blocks).start.getTime(),
+    booking,
+  }));
+  const items = [...bookingItems, ...blockedItems].sort((a, b) => a.start - b.start);
+
+  return (
+    <div className="grid gap-3 lg:hidden" aria-label="Daily agenda">
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+          No visible bookings or blocked times for this day.
+        </div>
+      ) : (
+        items.map((item) => {
+          if (item.kind === "blocked") {
+            const blocked = item.blocked;
+            return (
+              <div key={item.id} className="rounded-xl border border-destructive/25 bg-destructive/10 p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  <Ban className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground">{blocked.reason}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatTimeUK(new Date(blocked.start))}-{formatTimeUK(new Date(blocked.end))} · {blocked.scope}
+                      {blocked.roomName ? ` · ${blocked.roomName}` : ""}
+                      {blocked.roomTypeName ? ` · ${blocked.roomTypeName}` : ""}
+                      {blocked.campusName ? ` · ${blocked.campusName}` : ""}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          const booking = bookingsById.get(item.id) ?? item.booking;
+          const roomNames = Array.from(requestRoomIds(booking))
+            .map((roomId) => roomMap.get(roomId))
+            .filter(Boolean)
+            .map((room) => `${room!.code} ${room!.name}`);
+
+          return (
+            <a
+              key={item.id}
+              href={`/dashboard/requests/${booking._id}`}
+              className="rounded-xl border border-border bg-card p-3 text-sm shadow-sm transition hover:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="break-words font-semibold text-foreground">{booking.sessionName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {bookingTimeLabel(booking.blocks)} · {booking.requesterName}
+                  </p>
+                </div>
+                <StatusPill status={booking.status} />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {roomNames.length ? roomNames.join(", ") : "Unallocated"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Timezone: {booking.timezone ?? tenantTimezone}
+              </p>
+            </a>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export function ResourceCalendar() {
@@ -644,13 +734,12 @@ export function ResourceCalendar() {
 
   const blockedTimesRaw = useQuery(
     api.blockedTimes.listBlockedTimesForCalendar,
-    tenant?._id
-      ? {
-          tenantId: tenant._id,
-          rangeStart: new Date(`${selectedDateString}T00:00:00`).toISOString(),
-          rangeEnd: new Date(`${selectedDateString}T23:59:59`).toISOString(),
-        }
-      : "skip"
+    {
+      tenantSlug,
+      auth,
+      rangeStart: new Date(`${selectedDateString}T00:00:00`).toISOString(),
+      rangeEnd: new Date(`${selectedDateString}T23:59:59`).toISOString(),
+    }
   );
 
   const blockedTimesForDay = useMemo<CalendarBlockedTime[]>(() => {
@@ -1022,7 +1111,14 @@ export function ResourceCalendar() {
           <>
             <UnallocatedPanel bookings={unallocatedBookings} />
 
-            <div className="overflow-x-auto">
+            <MobileAgenda
+              bookings={bookingsForDay}
+              rooms={filteredRooms}
+              blockedTimes={blockedTimesForDay}
+              tenantTimezone={tenantTimezone}
+            />
+
+            <div className="hidden overflow-x-auto rounded-xl border border-border lg:block">
               <div
                 className="grid"
                 style={{
@@ -1139,7 +1235,6 @@ export function ResourceCalendar() {
 
       {tenant?._id && (
         <BlockedTimeDialog
-          tenantId={tenant._id}
           open={blockTimeDialogOpen}
           onOpenChange={setBlockTimeDialogOpen}
           initialData={{
