@@ -4,6 +4,7 @@ import { authContextValidator, requireAdmin, tenantBySlug } from "./authz";
 
 const DEFAULT_MAX_BYTES = 100 * 1024 * 1024;
 const ROOM_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const TENANT_LOGO_MAX_BYTES = 5 * 1024 * 1024;
 
 export const generateUploadUrl = mutation({
   args: { tenantSlug: v.string(), sizeBytes: v.number() },
@@ -30,6 +31,27 @@ export const generateRoomImageUploadUrl = mutation({
 
     if (args.sizeBytes > ROOM_IMAGE_MAX_BYTES) {
       throw new Error("Room image must be 10 MB or smaller.");
+    }
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const generateTenantLogoUploadUrl = mutation({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    sizeBytes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.tenantSlug, args.auth);
+
+    if (args.sizeBytes <= 0) {
+      throw new Error("Logo file is empty.");
+    }
+
+    if (args.sizeBytes > TENANT_LOGO_MAX_BYTES) {
+      throw new Error("Logo must be 5 MB or smaller.");
     }
 
     return await ctx.storage.generateUploadUrl();

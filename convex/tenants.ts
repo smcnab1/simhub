@@ -40,6 +40,18 @@ async function roomImageUrl(ctx: QueryCtx, imageStorageId?: Id<"_storage">) {
   return imageStorageId ? await ctx.storage.getUrl(imageStorageId) : null;
 }
 
+async function tenantLogoUrl(ctx: QueryCtx, logoStorageId?: Id<"_storage">) {
+  return logoStorageId ? await ctx.storage.getUrl(logoStorageId) : null;
+}
+
+function assertValidEmail(email: string, label: string) {
+  const trimmed = email.trim();
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    throw new Error(`${label} must be a valid email address.`);
+  }
+}
+
 function normalizeRoomType(roomType: Doc<"roomTypes">) {
   const maxBookingDurationMinutes =
     roomType.maxBookingDurationMinutes ??
@@ -110,7 +122,10 @@ export const getPrivateTenant = query({
   args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
     const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
-    return tenant;
+    return {
+      ...tenant,
+      logoUrl: await tenantLogoUrl(ctx, tenant.logoStorageId),
+    };
   },
 });
 
@@ -1111,9 +1126,15 @@ export const upsertFacilityDetails = mutation({
     maximumAdvanceBookingDays: v.optional(v.number()),
     bookingNoticeViolationMode: v.union(v.literal("Block"), v.literal("Warn")),
     logoStorageId: v.optional(v.id("_storage")),
+    removeLogo: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
+    const name = args.name.trim();
+    const contactEmail = args.contactEmail.trim().toLowerCase();
+    const notificationEmails = args.notificationEmails.map((email) =>
+      email.trim().toLowerCase()
+    );
     const minimumAdvanceBookingDays =
       args.minimumAdvanceBookingDays === undefined
         ? undefined
@@ -1123,6 +1144,24 @@ export const upsertFacilityDetails = mutation({
         ? undefined
         : Math.max(0, Math.floor(args.maximumAdvanceBookingDays));
 
+    if (!name) {
+      throw new Error("Facility name is required.");
+    }
+
+    assertValidEmail(contactEmail, "Contact email");
+
+    for (const email of notificationEmails) {
+      assertValidEmail(email, "Notification email");
+    }
+
+    if (
+      !Number.isFinite(args.uploadMaxBytes) ||
+      args.uploadMaxBytes < 1024 * 1024 ||
+      args.uploadMaxBytes > 100 * 1024 * 1024
+    ) {
+      throw new Error("Upload limit must be between 1 MB and 100 MB.");
+    }
+
     if (
       minimumAdvanceBookingDays !== undefined &&
       maximumAdvanceBookingDays !== undefined &&
@@ -1131,17 +1170,39 @@ export const upsertFacilityDetails = mutation({
       throw new Error("Minimum advance notice cannot be greater than the maximum future booking window.");
     }
 
-    await ctx.db.patch(tenant._id, {
-      name: args.name,
-      contactEmail: args.contactEmail,
-      notificationEmails: args.notificationEmails,
+    const payload: {
+      name: string;
+      contactEmail: string;
+      notificationEmails: string[];
+      notificationEmailsEnabled: boolean;
+      hoursOfOperation: string;
+      uploadMaxBytes: number;
+      minimumAdvanceBookingDays?: number;
+      maximumAdvanceBookingDays?: number;
+      bookingNoticeViolationMode: "Block" | "Warn";
+      logoStorageId?: Id<"_storage"> | undefined;
+    } = {
+      name,
+      contactEmail,
+      notificationEmails,
       notificationEmailsEnabled: args.notificationEmailsEnabled,
-      hoursOfOperation: args.hoursOfOperation,
-      uploadMaxBytes: args.uploadMaxBytes,
+      hoursOfOperation: args.hoursOfOperation.trim(),
+      uploadMaxBytes: Math.floor(args.uploadMaxBytes),
       minimumAdvanceBookingDays,
       maximumAdvanceBookingDays,
       bookingNoticeViolationMode: args.bookingNoticeViolationMode,
-      logoStorageId: args.logoStorageId,
+    };
+
+    if (args.removeLogo) {
+      payload.logoStorageId = undefined;
+    } else if (args.logoStorageId) {
+      payload.logoStorageId = args.logoStorageId;
+    } else if (tenant.logoStorageId) {
+      payload.logoStorageId = tenant.logoStorageId;
+    }
+
+    await ctx.db.patch(tenant._id, {
+      ...payload,
     });
   },
 });

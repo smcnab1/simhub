@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { useDashboardAuth } from "@/components/dashboard-auth";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import {
@@ -22,6 +23,9 @@ import {
   SaveIcon,
   AlertCircleIcon,
   CalendarClockIcon,
+  ImageIcon,
+  Trash2Icon,
+  UploadIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,6 +34,41 @@ function parseEmails(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function validateHours(hours: WeekHours) {
+  for (const day of DAYS) {
+    const value = hours[day];
+
+    if (value.closed) continue;
+
+    if (
+      !value.publicOpen ||
+      !value.publicClose ||
+      !value.staffOpen ||
+      !value.staffClose
+    ) {
+      return `${day} hours must include all opening and closing times.`;
+    }
+
+    if (value.publicOpen >= value.publicClose) {
+      return `${day} public opening time must be before closing time.`;
+    }
+
+    if (value.staffOpen >= value.staffClose) {
+      return `${day} staff opening time must be before closing time.`;
+    }
+
+    if (value.staffOpen > value.publicOpen || value.staffClose < value.publicClose) {
+      return `${day} staff hours must cover the full public booking window.`;
+    }
+  }
+
+  return null;
 }
 
 function FieldSkeleton() {
@@ -142,8 +181,11 @@ export function FacilityAdmin() {
   const tenantSlug = auth.tenantSlug;
   const tenant = useQuery(api.tenants.getPrivateTenant, { tenantSlug, auth });
   const saveFacility = useMutation(api.tenants.upsertFacilityDetails);
+  const generateTenantLogoUploadUrl = useMutation(api.files.generateTenantLogoUploadUrl);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Local form state
   const [name, setName] = useState("");
@@ -152,6 +194,9 @@ export function FacilityAdmin() {
   const [notificationEmailsEnabled, setNotificationEmailsEnabled] = useState(true);
   const [weekHours, setWeekHours] = useState<WeekHours>(DEFAULT_HOURS);
   const [uploadMaxMb, setUploadMaxMb] = useState("100");
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
   const [minimumAdvanceBookingDays, setMinimumAdvanceBookingDays] = useState("");
   const [maximumAdvanceBookingDays, setMaximumAdvanceBookingDays] = useState("");
   const [bookingNoticeViolationMode, setBookingNoticeViolationMode] =
@@ -178,10 +223,24 @@ export function FacilityAdmin() {
           : String(tenant.maximumAdvanceBookingDays)
       );
       setBookingNoticeViolationMode(tenant.bookingNoticeViolationMode ?? "Block");
+      setLogoFile(null);
+      setRemoveLogo(false);
+      setLogoPreviewUrl(tenant.logoUrl ?? null);
+      setFormError(null);
+      setSuccessMessage(null);
     }
   }, [tenant]);
 
+  useEffect(() => {
+    return () => {
+      if (logoPreviewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+    };
+  }, [logoPreviewUrl]);
+
   function markDirty() {
+    setSuccessMessage(null);
     setHasChanges(true);
   }
 
@@ -193,10 +252,140 @@ export function FacilityAdmin() {
     markDirty();
   }
 
+  function handleLogoChange(file: File | undefined) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setFormError("Logo must be an image file.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setFormError("Logo must be 5 MB or smaller.");
+      return;
+    }
+
+    if (logoPreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(logoPreviewUrl);
+    }
+
+    setLogoFile(file);
+    setLogoPreviewUrl(URL.createObjectURL(file));
+    setRemoveLogo(false);
+    setFormError(null);
+    markDirty();
+  }
+
+  function handleRemoveLogo() {
+    if (logoPreviewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(logoPreviewUrl);
+    }
+
+    setLogoFile(null);
+    setLogoPreviewUrl(null);
+    setRemoveLogo(true);
+    markDirty();
+  }
+
+  async function uploadLogo() {
+    if (!logoFile) return undefined;
+
+    const url = await generateTenantLogoUploadUrl({
+      tenantSlug,
+      auth,
+      sizeBytes: logoFile.size,
+    });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": logoFile.type || "application/octet-stream" },
+      body: logoFile,
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to upload logo.");
+    }
+
+    const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
+    return storageId;
+  }
+
+  function validateForm() {
+    const trimmedName = name.trim();
+    const trimmedContactEmail = contactEmail.trim();
+    const parsedNotificationEmails = parseEmails(notificationEmails);
+    const uploadLimit = Number(uploadMaxMb);
+    const minimumDays =
+      minimumAdvanceBookingDays.trim() === ""
+        ? undefined
+        : Number(minimumAdvanceBookingDays);
+    const maximumDays =
+      maximumAdvanceBookingDays.trim() === ""
+        ? undefined
+        : Number(maximumAdvanceBookingDays);
+
+    if (!trimmedName) {
+      return "Facility name is required.";
+    }
+
+    if (!isValidEmail(trimmedContactEmail)) {
+      return "Enter a valid contact email address.";
+    }
+
+    if (parsedNotificationEmails.some((email) => !isValidEmail(email))) {
+      return "Enter valid notification email addresses separated by commas.";
+    }
+
+    const hoursError = validateHours(weekHours);
+    if (hoursError) {
+      return hoursError;
+    }
+
+    if (!Number.isInteger(uploadLimit) || uploadLimit < 1 || uploadLimit > 100) {
+      return "Upload limit must be a whole number between 1 and 100 MB.";
+    }
+
+    if (
+      minimumDays !== undefined &&
+      (!Number.isInteger(minimumDays) || minimumDays < 0)
+    ) {
+      return "Minimum advance notice must be a whole number of days.";
+    }
+
+    if (
+      maximumDays !== undefined &&
+      (!Number.isInteger(maximumDays) || maximumDays < 0)
+    ) {
+      return "Maximum future booking window must be a whole number of days.";
+    }
+
+    if (
+      minimumDays !== undefined &&
+      maximumDays !== undefined &&
+      minimumDays > maximumDays
+    ) {
+      return "Minimum advance notice cannot be greater than the maximum future booking window.";
+    }
+
+    return null;
+  }
+
   async function handleSave() {
     if (!tenant) return;
+    const validationError = validateForm();
+
+    if (validationError) {
+      setFormError(validationError);
+      setSuccessMessage(null);
+      toast.error(validationError);
+      return;
+    }
+
     setSaving(true);
+    setFormError(null);
+    setSuccessMessage(null);
     try {
+      const logoStorageId = await uploadLogo();
+
       await saveFacility({
         tenantSlug,
         auth,
@@ -215,11 +404,21 @@ export function FacilityAdmin() {
             ? undefined
             : Number(maximumAdvanceBookingDays),
         bookingNoticeViolationMode,
+        logoStorageId,
+        removeLogo: removeLogo && !logoStorageId,
       });
       setHasChanges(false);
+      setLogoFile(null);
+      setRemoveLogo(false);
+      setSuccessMessage("Tenant settings saved.");
       toast.success("Facility settings saved successfully.");
-    } catch {
-      toast.error("Failed to save facility settings. Please try again.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to save facility settings. Please try again.";
+      setFormError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -230,9 +429,9 @@ export function FacilityAdmin() {
   return (
     <div className="flex flex-col gap-8 pb-16">
       <AdminPageHeader
-        title="Facility Details"
-        description="Manage your facility's core information, contact details, and operational settings."
-        breadcrumbs={[{ label: "Facility Details" }]}
+        title="Tenant Settings"
+        description="Manage the core details, contact routing, hours, branding, and upload limits for this tenant."
+        breadcrumbs={[{ label: "Tenant Settings" }]}
         actions={
           <div className="flex items-center gap-3">
             {hasChanges && (
@@ -254,10 +453,23 @@ export function FacilityAdmin() {
         }
       />
 
-      {/* Identity */}
+      {(formError || successMessage) && (
+        <div
+          className={
+            formError
+              ? "rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              : "rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary"
+          }
+          role={formError ? "alert" : "status"}
+        >
+          {formError ?? successMessage}
+        </div>
+      )}
+
+      {/* General */}
       <AdminSettingsCard
-        title="Facility Identity"
-        description="Your facility's public-facing name and primary contact information."
+        title="General"
+        description="Your facility's public-facing identity."
         icon={<Building2Icon className="size-4" />}
       >
         <div className="flex flex-col gap-0">
@@ -274,11 +486,21 @@ export function FacilityAdmin() {
                   setName(e.target.value);
                   markDirty();
                 }}
+                aria-invalid={!name.trim()}
                 placeholder="e.g. London Simulation Centre"
               />
             )}
           </AdminSettingsRow>
+        </div>
+      </AdminSettingsCard>
 
+      {/* Contact */}
+      <AdminSettingsCard
+        title="Contact"
+        description="Primary contact details and notification routing."
+        icon={<BellIcon className="size-4" />}
+      >
+        <div className="flex flex-col gap-0">
           <AdminSettingsRow
             label="Contact email"
             description="Primary contact address for general enquiries."
@@ -293,20 +515,12 @@ export function FacilityAdmin() {
                   setContactEmail(e.target.value);
                   markDirty();
                 }}
+                aria-invalid={!!contactEmail.trim() && !isValidEmail(contactEmail)}
                 placeholder="admin@example.edu"
               />
             )}
           </AdminSettingsRow>
-        </div>
-      </AdminSettingsCard>
 
-      {/* Notifications */}
-      <AdminSettingsCard
-        title="Notification Emails"
-        description="Additional email addresses that can receive new booking request alerts."
-        icon={<BellIcon className="size-4" />}
-      >
-        <div className="flex flex-col gap-0">
           <AdminSettingsRow
             label="Notification recipients"
             description="Comma-separated list of email addresses for tenant-level new booking alerts."
@@ -322,6 +536,9 @@ export function FacilityAdmin() {
                     setNotificationEmails(e.target.value);
                     markDirty();
                   }}
+                  aria-invalid={parseEmails(notificationEmails).some(
+                    (email) => !isValidEmail(email)
+                  )}
                   placeholder="notifications@example.edu, manager@example.edu"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -433,9 +650,9 @@ export function FacilityAdmin() {
         </div>
       </AdminSettingsCard>
 
-      {/* Opening Hours */}
+      {/* Hours */}
       <AdminSettingsCard
-        title="Opening Hours"
+        title="Hours"
         description="Configure your facility's operating hours for each day of the week."
         icon={<ClockIcon className="size-4" />}
         noPadding
@@ -516,9 +733,76 @@ export function FacilityAdmin() {
         </div>
       </AdminSettingsCard>
 
-      {/* Storage */}
+      {/* Branding */}
       <AdminSettingsCard
-        title="File Storage"
+        title="Branding"
+        description="Display a tenant logo where the product surfaces branding."
+        icon={<ImageIcon className="size-4" />}
+      >
+        <div className="flex flex-col gap-0">
+          <AdminSettingsRow
+            label="Logo"
+            description="Upload a PNG, JPG, SVG, or WebP image up to 5 MB."
+            stacked
+          >
+            {isLoading ? (
+              <FieldSkeleton />
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="flex h-24 w-40 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/30">
+                    {logoPreviewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={logoPreviewUrl}
+                        alt={`${name || "Tenant"} logo`}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    ) : (
+                      <ImageIcon className="size-8 text-muted-foreground" aria-hidden="true" />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Label
+                      htmlFor="tenant-logo"
+                      className="inline-flex h-7 cursor-pointer items-center justify-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50"
+                    >
+                      <UploadIcon className="size-3.5" data-icon="inline-start" />
+                      Upload logo
+                    </Label>
+                    <Input
+                      id="tenant-logo"
+                      type="file"
+                      accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                      className="sr-only"
+                      onChange={(event) => handleLogoChange(event.currentTarget.files?.[0])}
+                    />
+                    {logoPreviewUrl ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={handleRemoveLogo}
+                      >
+                        <Trash2Icon className="size-3.5" data-icon="inline-start" />
+                        Remove
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Logo changes are saved when you press Save changes.
+                </p>
+              </div>
+            )}
+          </AdminSettingsRow>
+        </div>
+      </AdminSettingsCard>
+
+      {/* Uploads */}
+      <AdminSettingsCard
+        title="Uploads"
         description="Control how large uploaded files can be for booking requests."
         icon={<HardDriveIcon className="size-4" />}
         footer={
