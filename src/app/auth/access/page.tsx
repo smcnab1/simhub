@@ -20,9 +20,16 @@ async function getAccessState() {
     email: workosUser.email,
     workosOrganizationId: session.organizationId,
   };
-  const memberships = await fetchQuery(api.tenants.listMembershipsForAuth, {
-    auth,
-  });
+  let memberships: Awaited<ReturnType<typeof fetchQuery<typeof api.tenants.listMembershipsForAuth>>>;
+
+  try {
+    memberships = await fetchQuery(api.tenants.listMembershipsForAuth, {
+      auth,
+    });
+  } catch (error) {
+    console.error("[auth/access] Could not load tenant memberships", error);
+    memberships = [];
+  }
 
   return { session, auth, memberships };
 }

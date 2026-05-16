@@ -39,12 +39,30 @@ export type DashboardAccess =
       reason: "insufficient_role";
       role: Role;
       tenantName?: string;
+    }
+  | {
+      ok: false;
+      reason: "no_membership";
+      email?: string;
     };
 
 function hasRequiredRole(role: Role, requiredRole: "tenant" | "staff" | "admin" | "developer") {
   if (requiredRole === "tenant") return true;
   if (requiredRole === "developer") return canAccessDeveloper(role);
   return requiredRole === "admin" ? canAccessAdmin(role) : canAccessStaff(role);
+}
+
+async function listMembershipsForAuth(auth: {
+  workosUserId?: string;
+  email?: string;
+  workosOrganizationId?: string;
+}) {
+  try {
+    return await fetchQuery(api.tenants.listMembershipsForAuth, { auth });
+  } catch (error) {
+    console.error("[dashboard-access] Could not load tenant memberships", error);
+    return [];
+  }
 }
 
 export async function getDashboardAccess({
@@ -62,9 +80,7 @@ export async function getDashboardAccess({
     email: workosUser.email,
     workosOrganizationId: session.organizationId,
   };
-  const memberships = await fetchQuery(api.tenants.listMembershipsForAuth, {
-    auth: authIdentity,
-  });
+  const memberships = await listMembershipsForAuth(authIdentity);
   const cookieStore = await cookies();
   const hostTenant = await getTenantHostResolution();
   const selectedSlug =
@@ -83,7 +99,11 @@ export async function getDashboardAccess({
     memberships[0];
 
   if (!selectedMembership) {
-    redirect("/auth/access");
+    return {
+      ok: false,
+      reason: "no_membership",
+      email: workosUser.email,
+    };
   }
 
   if (!hasRequiredRole(selectedMembership.role, requiredRole)) {

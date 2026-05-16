@@ -174,12 +174,13 @@ async function userByEmail(
   email: string
 ) {
   const normalizedEmail = normalizeEmail(email);
-  const exact = await ctx.db
+  const exactMatches = await ctx.db
     .query("users")
     .withIndex("by_tenant_email", (q) =>
       q.eq("tenantId", tenantId).eq("email", normalizedEmail)
     )
-    .unique();
+    .collect();
+  const exact = exactMatches[0];
 
   if (exact) {
     return exact;
