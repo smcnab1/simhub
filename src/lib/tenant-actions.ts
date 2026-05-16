@@ -6,6 +6,7 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
 import { getCurrentUser } from "@/lib/auth";
 import { canAccessStaff } from "@/lib/authz-logic";
+import { TENANT_COOKIE_NAME } from "@/lib/config";
 
 export async function switchTenant(formData: FormData) {
   const session = await getCurrentUser();
@@ -32,7 +33,7 @@ export async function switchTenant(formData: FormData) {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set("simhub-tenant-slug", membership.tenantSlug, {
+  cookieStore.set(TENANT_COOKIE_NAME, membership.tenantSlug, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",

@@ -1,6 +1,6 @@
-# SimHub
+# SimHQ
 
-SimHub is a multi-tenant simulation centre booking SaaS foundation built with Next.js App Router, TypeScript, Tailwind CSS, Convex, and WorkOS AuthKit.
+SimHQ is a multi-tenant simulation centre booking SaaS foundation built with Next.js App Router, TypeScript, Tailwind CSS, Convex, and WorkOS AuthKit.
 
 ## Product Surface
 
@@ -200,7 +200,7 @@ Set these values in the Convex environment for email delivery:
 
 ```bash
 RESEND_API_KEY=re_...
-EMAIL_FROM="SimHub <notifications@example.com>"
+EMAIL_FROM="SimHQ <notifications@example.com>"
 EMAIL_DEV_MODE=false
 ```
 
@@ -221,15 +221,15 @@ Developer account matches the account you sign in with. If you use a bootstrap
 token, put the same value in `.env.local` and the Convex environment:
 
 ```bash
-SIMHUB_ENV=development
-SIMHUB_BOOTSTRAP_TOKEN=optional-shared-secret
-SIMHUB_DEVELOPER_EMAIL=you@example.com
-SIMHUB_SEED_ADMIN_EMAIL=admin@example.local
-NEXT_PUBLIC_SIMHUB_TENANT_SLUG=university-of-nothing
+SIMHQ_ENV=development
+SIMHQ_BOOTSTRAP_TOKEN=optional-shared-secret
+SIMHQ_DEVELOPER_EMAIL=you@example.com
+SIMHQ_SEED_ADMIN_EMAIL=admin@example.local
+NEXT_PUBLIC_SIMHQ_TENANT_SLUG=university-of-nothing
 ```
 
-Set `SIMHUB_ALLOW_BOOTSTRAP=true` in the Convex environment used by
-`npm run bootstrap`. Set `SIMHUB_BOOTSTRAP_TOKEN` there too if you want the
+Set `SIMHQ_ALLOW_BOOTSTRAP=true` in the Convex environment used by
+`npm run bootstrap`. Set `SIMHQ_BOOTSTRAP_TOKEN` there too if you want the
 extra shared-secret check.
 
 Then run:
@@ -246,17 +246,17 @@ by email fallback otherwise.
 
 Use `npm run seed` to re-apply the same demo data after schema or fixture
 changes. To reset the seeded tenant in a local/dev Convex deployment, first set
-`SIMHUB_ALLOW_DEV_RESET=true` in the Convex environment, optionally set
-`SIMHUB_DEV_RESET_TOKEN`, then run:
+`SIMHQ_ALLOW_DEV_RESET=true` in the Convex environment, optionally set
+`SIMHQ_DEV_RESET_TOKEN`, then run:
 
 ```bash
 npm run reset:dev
 npm run bootstrap
 ```
 
-Dev reset is guarded by `SIMHUB_ENV`/`NODE_ENV`/`VERCEL_ENV`, refuses production
+Dev reset is guarded by `SIMHQ_ENV`/`NODE_ENV`/`VERCEL_ENV`, refuses production
 deployments, requires the confirmation phrase baked into the script, and will
-only run when the Convex environment has `SIMHUB_ALLOW_DEV_RESET=true`.
+only run when the Convex environment has `SIMHQ_ALLOW_DEV_RESET=true`.
 
 ## WorkOS
 

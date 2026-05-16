@@ -5,7 +5,7 @@ type NotAllowedProps = {
 
 export function NotAllowed({
   title = "Not allowed",
-  message = "Your current SimHub role does not allow access to this area.",
+  message = "Your current SimHQ role does not allow access to this area.",
 }: NotAllowedProps) {
   return (
     <section className="rounded-lg border border-border bg-primary/10 p-5 text-foreground">

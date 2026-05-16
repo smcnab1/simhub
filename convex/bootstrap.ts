@@ -8,6 +8,11 @@ const SEEDED_TENANT_NAME = "University of Nothing";
 const SEEDED_TENANT_SLUG = "university-of-nothing";
 const DEFAULT_TIMEZONE = "Europe/London";
 
+function simhqEnv(name: string) {
+  const legacyName = name.replace(/^SIMHQ_/, "SIMHUB_");
+  return process.env[name] ?? process.env[legacyName];
+}
+
 const tenantSeedValidator = v.object({
   name: v.string(),
   slug: v.string(),
@@ -86,9 +91,9 @@ function seededTenant(input?: TenantSeed): TenantSeed {
     slug: normalizeSlug(input?.slug || SEEDED_TENANT_SLUG),
     timezone: input?.timezone?.trim() || DEFAULT_TIMEZONE,
     contactEmail:
-      input?.contactEmail?.trim() || "simhub-admin@example.local",
+      input?.contactEmail?.trim() || "simhq-admin@example.local",
     notificationEmails: input?.notificationEmails ?? [
-      "simhub-admin@example.local",
+      "simhq-admin@example.local",
     ],
     notificationEmailsEnabled: input?.notificationEmailsEnabled ?? true,
     hoursOfOperation: input?.hoursOfOperation?.trim() || "Mon-Fri 08:00-18:00",
@@ -110,9 +115,9 @@ async function upsertTenant(ctx: MutationCtx, seed: TenantSeed) {
     name: seed.name,
     slug: seed.slug,
     timezone: seed.timezone ?? DEFAULT_TIMEZONE,
-    contactEmail: seed.contactEmail ?? "simhub-admin@example.local",
+    contactEmail: seed.contactEmail ?? "simhq-admin@example.local",
     notificationEmails: seed.notificationEmails ?? [
-      "simhub-admin@example.local",
+      "simhq-admin@example.local",
     ],
     notificationEmailsEnabled: seed.notificationEmailsEnabled ?? true,
     hoursOfOperation: seed.hoursOfOperation ?? "Mon-Fri 08:00-18:00",
@@ -304,7 +309,7 @@ async function seedUniversityOfNothing(
   const [developerUserId, adminUserId] = await Promise.all([
     upsertUser(ctx, tenantId, {
       email: developerEmail,
-      name: args.developerName || "SimHub Developer",
+      name: args.developerName || "SimHQ Developer",
       role: "Developer",
       workosUserId: args.developerWorkOSUserId,
     }),
@@ -424,20 +429,20 @@ function assertDevResetAllowed(args: {
   }
 
   if (
-    process.env.SIMHUB_ENV?.toLowerCase() === "production" ||
+    simhqEnv("SIMHQ_ENV")?.toLowerCase() === "production" ||
     process.env.VERCEL_ENV?.toLowerCase() === "production" ||
     process.env.NODE_ENV?.toLowerCase() === "production"
   ) {
     throw new Error("Dev reset is blocked in production environments.");
   }
 
-  if (process.env.SIMHUB_ALLOW_DEV_RESET !== "true") {
+  if (simhqEnv("SIMHQ_ALLOW_DEV_RESET") !== "true") {
     throw new Error(
-      "Dev reset requires SIMHUB_ALLOW_DEV_RESET=true in the Convex environment."
+      "Dev reset requires SIMHQ_ALLOW_DEV_RESET=true in the Convex environment."
     );
   }
 
-  const expectedToken = process.env.SIMHUB_DEV_RESET_TOKEN;
+  const expectedToken = simhqEnv("SIMHQ_DEV_RESET_TOKEN");
   if (expectedToken && args.resetToken !== expectedToken) {
     throw new Error("Invalid dev reset token.");
   }
@@ -445,20 +450,20 @@ function assertDevResetAllowed(args: {
 
 function assertBootstrapAllowed(args: { bootstrapToken?: string }) {
   if (
-    process.env.SIMHUB_ENV?.toLowerCase() === "production" ||
+    simhqEnv("SIMHQ_ENV")?.toLowerCase() === "production" ||
     process.env.VERCEL_ENV?.toLowerCase() === "production" ||
     process.env.NODE_ENV?.toLowerCase() === "production"
   ) {
     throw new Error("Bootstrap is blocked in production environments.");
   }
 
-  if (process.env.SIMHUB_ALLOW_BOOTSTRAP !== "true") {
+  if (simhqEnv("SIMHQ_ALLOW_BOOTSTRAP") !== "true") {
     throw new Error(
-      "Bootstrap requires SIMHUB_ALLOW_BOOTSTRAP=true in the Convex environment."
+      "Bootstrap requires SIMHQ_ALLOW_BOOTSTRAP=true in the Convex environment."
     );
   }
 
-  const expectedToken = process.env.SIMHUB_BOOTSTRAP_TOKEN;
+  const expectedToken = simhqEnv("SIMHQ_BOOTSTRAP_TOKEN");
   if (expectedToken && args.bootstrapToken !== expectedToken) {
     throw new Error("Invalid bootstrap token.");
   }
