@@ -4,7 +4,11 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
 import { getCurrentUser } from "@/lib/auth";
 import { canAccessAdmin, canAccessDeveloper, canAccessStaff } from "@/lib/authz-logic";
-import { TENANT_SLUG } from "@/lib/config";
+import {
+  LEGACY_TENANT_COOKIE_NAME,
+  TENANT_COOKIE_NAME,
+  TENANT_SLUG,
+} from "@/lib/config";
 import type { Role } from "@/lib/domain";
 
 type DashboardAccessOptions = {
@@ -61,7 +65,9 @@ export async function getDashboardAccess({
   });
   const cookieStore = await cookies();
   const selectedSlug =
-    cookieStore.get("simhub-tenant-slug")?.value || TENANT_SLUG;
+    cookieStore.get(TENANT_COOKIE_NAME)?.value ||
+    cookieStore.get(LEGACY_TENANT_COOKIE_NAME)?.value ||
+    TENANT_SLUG;
   const selectedMembership =
     memberships.find((membership) => membership.tenantSlug === selectedSlug) ??
     memberships.find((membership) => canAccessStaff(membership.role)) ??

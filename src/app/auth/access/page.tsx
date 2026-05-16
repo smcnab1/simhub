@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "../../../../convex/_generated/api";
 import { getCurrentUser } from "@/lib/auth";
+import { APP_NAME, TENANT_COOKIE_NAME } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ async function selectTenant(formData: FormData) {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set("simhub-tenant-slug", membership.tenantSlug, {
+  cookieStore.set(TENANT_COOKIE_NAME, membership.tenantSlug, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
@@ -64,10 +65,10 @@ export default async function AccessPage() {
           Account access
         </p>
         <h1 className="mt-2 text-2xl font-semibold text-foreground">
-          Choose a SimHub workspace
+          Choose a {APP_NAME} workspace
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          You are signed in with WorkOS. SimHub still needs a matching Convex
+          You are signed in with WorkOS. {APP_NAME} still needs a matching Convex
           user record with a Staff or Admin role before the dashboard can load.
         </p>
 
@@ -97,7 +98,7 @@ export default async function AccessPage() {
         ) : (
           <div className="mt-5 rounded-md border border-border bg-primary/10 p-4 text-sm text-foreground">
             No Staff or Admin tenant access was found for your WorkOS account.
-            Ask a SimHub admin to add your email to the correct tenant in
+            Ask a {APP_NAME} admin to add your email to the correct tenant in
             Convex, then sign in again.
           </div>
         )}

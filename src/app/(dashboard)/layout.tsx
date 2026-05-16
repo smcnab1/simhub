@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const access = await getDashboardAccess();
   const environment =
-    process.env.SIMHUB_ENV ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV;
+    process.env.SIMHQ_ENV ??
+    process.env.SIMHUB_ENV ??
+    process.env.VERCEL_ENV ??
+    process.env.NODE_ENV;
 
   if (!access.ok) {
     return null;

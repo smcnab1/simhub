@@ -1,4 +1,4 @@
-name: SimHub CI
+name: SimHQ CI
 
 on:
   pull_request:

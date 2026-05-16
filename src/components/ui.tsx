@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { CalendarDays, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { APP_NAME } from "@/lib/config";
 
 export const pageWrapClass = "mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8";
 export const sectionCardClass = "app-surface rounded-2xl p-4";
@@ -24,7 +25,7 @@ export function PublicNav() {
       <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-tight">
           <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">S</span>
-          SimHub
+          {APP_NAME}
         </Link>
         <div className="flex items-center gap-2 text-sm">
           <Link href="/calendar" className="rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary">Calendar</Link>
@@ -41,7 +42,7 @@ export function DashboardTopbar({ title = "Operations" }: { title?: string }) {
   return (
     <header className="sticky top-0 z-20 flex min-h-16 items-center justify-between border-b border-border/80 bg-card/90 px-4 py-3 backdrop-blur-xl lg:px-6">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary">SimHub</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary">{APP_NAME}</p>
         <p className="text-sm font-semibold text-foreground">{title}</p>
       </div>
       <div className="flex items-center gap-2">

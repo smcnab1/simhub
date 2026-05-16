@@ -1,6 +1,6 @@
 # Audit Events
 
-SimHub stores operational history in immutable `auditEvents` records. Booking timelines and the global audit log both read from this single stream.
+SimHQ stores operational history in immutable `auditEvents` records. Booking timelines and the global audit log both read from this single stream.
 
 ## Architecture
 

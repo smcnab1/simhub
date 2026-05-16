@@ -1,5 +1,5 @@
 {
-  "name": "simhub",
+  "name": "simhq",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,9 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "convex:dev": "convex dev",
-    "bootstrap": "node scripts/simhub-bootstrap.mjs bootstrap",
-    "seed": "node scripts/simhub-bootstrap.mjs seed",
-    "reset:dev": "node scripts/simhub-bootstrap.mjs reset:dev"
+    "bootstrap": "node scripts/simhq-bootstrap.mjs bootstrap",
+    "seed": "node scripts/simhq-bootstrap.mjs seed",
+    "reset:dev": "node scripts/simhq-bootstrap.mjs reset:dev"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

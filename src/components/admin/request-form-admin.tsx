@@ -460,7 +460,7 @@ export function RequestFormAdmin() {
       {/* Standard / locked fields */}
       <AdminSettingsCard
         title="Standard fields"
-        description="These fields are required by SimHub and appear on every booking request. They cannot be removed or reordered."
+        description="These fields are required by SimHQ and appear on every booking request. They cannot be removed or reordered."
         icon={<LockIcon className="size-4" />}
       >
         {isLoading ? (

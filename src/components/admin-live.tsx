@@ -1007,7 +1007,7 @@ export function RequestFormAdmin() {
           <div>
             <h2 className="font-semibold">Standard fields</h2>
             <p className="text-sm text-muted-foreground">
-              These are required by SimHub and cannot be removed.
+              These are required by SimHQ and cannot be removed.
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm">

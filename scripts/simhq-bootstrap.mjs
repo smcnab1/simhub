@@ -27,32 +27,38 @@ function optional(value) {
   return trimmed ? trimmed : undefined;
 }
 
+function simhqEnv(name) {
+  const legacyName = name.replace(/^SIMHQ_/, "SIMHUB_");
+  const legacyPublicName = name.replace(/^NEXT_PUBLIC_SIMHQ_/, "NEXT_PUBLIC_SIMHUB_");
+  return process.env[name] ?? process.env[legacyName] ?? process.env[legacyPublicName];
+}
+
 function seedArgs() {
   const tenantSlug =
-    optional(process.env.SIMHUB_SEED_TENANT_SLUG) ||
-    optional(process.env.NEXT_PUBLIC_SIMHUB_TENANT_SLUG) ||
+    optional(simhqEnv("SIMHQ_SEED_TENANT_SLUG")) ||
+    optional(simhqEnv("NEXT_PUBLIC_SIMHQ_TENANT_SLUG")) ||
     "university-of-nothing";
 
   return {
     tenant: {
-      name: optional(process.env.SIMHUB_SEED_TENANT_NAME) ||
+      name: optional(simhqEnv("SIMHQ_SEED_TENANT_NAME")) ||
         "University of Nothing",
       slug: tenantSlug,
-      timezone: optional(process.env.SIMHUB_SEED_TIMEZONE) || "Europe/London",
-      contactEmail: optional(process.env.SIMHUB_SEED_CONTACT_EMAIL),
-      notificationEmails: optional(process.env.SIMHUB_SEED_NOTIFICATION_EMAILS)
+      timezone: optional(simhqEnv("SIMHQ_SEED_TIMEZONE")) || "Europe/London",
+      contactEmail: optional(simhqEnv("SIMHQ_SEED_CONTACT_EMAIL")),
+      notificationEmails: optional(simhqEnv("SIMHQ_SEED_NOTIFICATION_EMAILS"))
         ?.split(",")
         .map((email) => email.trim())
         .filter(Boolean),
-      workosOrganizationId: optional(process.env.SIMHUB_SEED_WORKOS_ORG_ID),
+      workosOrganizationId: optional(simhqEnv("SIMHQ_SEED_WORKOS_ORG_ID")),
     },
-    bootstrapToken: optional(process.env.SIMHUB_BOOTSTRAP_TOKEN),
-    developerEmail: optional(process.env.SIMHUB_DEVELOPER_EMAIL),
-    developerName: optional(process.env.SIMHUB_DEVELOPER_NAME),
-    developerWorkOSUserId: optional(process.env.SIMHUB_DEVELOPER_WORKOS_USER_ID),
-    adminEmail: optional(process.env.SIMHUB_SEED_ADMIN_EMAIL),
-    adminName: optional(process.env.SIMHUB_SEED_ADMIN_NAME),
-    adminWorkOSUserId: optional(process.env.SIMHUB_SEED_ADMIN_WORKOS_USER_ID),
+    bootstrapToken: optional(simhqEnv("SIMHQ_BOOTSTRAP_TOKEN")),
+    developerEmail: optional(simhqEnv("SIMHQ_DEVELOPER_EMAIL")),
+    developerName: optional(simhqEnv("SIMHQ_DEVELOPER_NAME")),
+    developerWorkOSUserId: optional(simhqEnv("SIMHQ_DEVELOPER_WORKOS_USER_ID")),
+    adminEmail: optional(simhqEnv("SIMHQ_SEED_ADMIN_EMAIL")),
+    adminName: optional(simhqEnv("SIMHQ_SEED_ADMIN_NAME")),
+    adminWorkOSUserId: optional(simhqEnv("SIMHQ_SEED_ADMIN_WORKOS_USER_ID")),
   };
 }
 
@@ -60,7 +66,7 @@ function assertNotProduction() {
   const values = [
     process.env.NODE_ENV,
     process.env.VERCEL_ENV,
-    process.env.SIMHUB_ENV,
+    simhqEnv("SIMHQ_ENV"),
   ].map((value) => value?.toLowerCase());
   const deployment = process.env.CONVEX_DEPLOYMENT?.toLowerCase();
 
@@ -84,7 +90,7 @@ function runConvex(functionName, args) {
 }
 
 if (!["bootstrap", "seed", "reset:dev"].includes(command)) {
-  console.error("Usage: node scripts/simhub-bootstrap.mjs <bootstrap|seed|reset:dev>");
+  console.error("Usage: node scripts/simhq-bootstrap.mjs <bootstrap|seed|reset:dev>");
   process.exit(1);
 }
 
@@ -93,12 +99,12 @@ assertNotProduction();
 if (command === "reset:dev") {
   runConvex("bootstrap:resetDev", {
     confirm: "RESET_LOCAL_DEV",
-    environment: optional(process.env.SIMHUB_ENV) ||
+    environment: optional(simhqEnv("SIMHQ_ENV")) ||
       optional(process.env.NODE_ENV) ||
       "development",
-    resetToken: optional(process.env.SIMHUB_DEV_RESET_TOKEN),
-    tenantSlug: optional(process.env.SIMHUB_SEED_TENANT_SLUG) ||
-      optional(process.env.NEXT_PUBLIC_SIMHUB_TENANT_SLUG) ||
+    resetToken: optional(simhqEnv("SIMHQ_DEV_RESET_TOKEN")),
+    tenantSlug: optional(simhqEnv("SIMHQ_SEED_TENANT_SLUG")) ||
+      optional(simhqEnv("NEXT_PUBLIC_SIMHQ_TENANT_SLUG")) ||
       "university-of-nothing",
   });
 }
