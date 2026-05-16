@@ -3,7 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { AlertTriangle, Info, LoaderCircle, Search, X } from "lucide-react";
+import { AlertTriangle, Clock, Info, LoaderCircle, MessageSquare, Search, X } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
@@ -20,6 +20,7 @@ import {
   occupancyDurationMinutes,
   sessionDurationMinutes,
 } from "@/lib/booking-logic";
+import { auditEventLabel } from "@/lib/audit-types";
 
 function severityLabel(severity: string) {
   return severity === "likely_unavailable"
@@ -66,6 +67,101 @@ type AllocationRequest = {
   } | null;
   updatedAt: number;
 };
+
+type TimelineEvent = {
+  _id: Id<"auditEvents">;
+  eventType: string;
+  message: string;
+  actorName?: string;
+  actorEmail?: string;
+  createdAt: number;
+  visibility: string;
+  severity?: string;
+  metadata?: unknown;
+  diff?: Array<{ field: string; before: unknown; after: unknown }>;
+};
+
+function eventMetadata(event: TimelineEvent) {
+  return event.metadata && typeof event.metadata === "object"
+    ? (event.metadata as Record<string, unknown>)
+    : {};
+}
+
+function TimelineDetails({ event }: { event: TimelineEvent }) {
+  const metadata = eventMetadata(event);
+  const bodyMarkdown = typeof metadata.bodyMarkdown === "string" ? metadata.bodyMarkdown : null;
+
+  return (
+    <>
+      {bodyMarkdown ? (
+        <p className="mt-2 rounded-lg border border-border bg-background p-3 text-sm text-foreground">
+          {bodyMarkdown}
+        </p>
+      ) : null}
+      {event.diff?.length ? (
+        <details className="mt-2 rounded-lg border border-border bg-background p-2 text-xs">
+          <summary className="cursor-pointer font-medium text-foreground">View changes</summary>
+          <div className="mt-2 grid gap-2">
+            {event.diff.map((entry) => (
+              <code key={entry.field} className="overflow-auto rounded bg-muted p-2 text-muted-foreground">
+                {entry.field}: {JSON.stringify({ before: entry.before, after: entry.after })}
+              </code>
+            ))}
+          </div>
+        </details>
+      ) : null}
+      {!bodyMarkdown && !event.diff?.length && Object.keys(metadata).length ? (
+        <details className="mt-2 rounded-lg border border-border bg-background p-2 text-xs">
+          <summary className="cursor-pointer font-medium text-foreground">Details</summary>
+          <code className="mt-2 block overflow-auto rounded bg-muted p-2 text-muted-foreground">
+            {JSON.stringify(metadata)}
+          </code>
+        </details>
+      ) : null}
+    </>
+  );
+}
+
+function BookingTimeline({ events }: { events?: TimelineEvent[] }) {
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold">Activity timeline</h2>
+        <Badge variant="outline">{events ? `${events.length} events` : "Loading"}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3">
+        {events === undefined ? (
+          <p className="text-sm text-muted-foreground">Loading activity...</p>
+        ) : events.length ? (
+          events.map((event) => {
+            const isComment = event.eventType.includes("comment");
+
+            return (
+              <article key={event._id} className="grid grid-cols-[auto_1fr] gap-3">
+                <div className="mt-1 flex size-8 items-center justify-center rounded-full border border-border bg-muted">
+                  {isComment ? <MessageSquare className="size-4" /> : <Clock className="size-4" />}
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{auditEventLabel(event.eventType)}</Badge>
+                    <span className="text-xs text-muted-foreground">{formatAuditTime(event.createdAt)}</span>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-foreground">{event.message}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {event.actorName ?? "System"}{event.actorEmail ? ` · ${event.actorEmail}` : ""}
+                  </p>
+                  <TimelineDetails event={event} />
+                </div>
+              </article>
+            );
+          })
+        ) : (
+          <p className="text-sm text-muted-foreground">No activity has been recorded yet.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 function formatAuditTime(value?: number) {
   if (!value) return "Not recorded";
@@ -310,6 +406,20 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
     publicView ? api.bookings.getPublicRequestByReference : api.bookings.getRequest,
     publicView ? publicLookupArgs : { tenantSlug, auth: auth ?? {}, requestId: id as Id<"bookingRequests"> }
   );
+  const timeline = useQuery(
+    publicView ? api.audit.listPublicForBooking : api.audit.listForBooking,
+    publicView
+      ? emailFromUrl
+        ? {
+            tenantSlug: TENANT_SLUG,
+            bookingId: id as Id<"bookingRequests">,
+            requesterEmail: emailFromUrl,
+          }
+        : "skip"
+      : auth
+        ? { tenantSlug, auth, bookingId: id as Id<"bookingRequests"> }
+        : "skip"
+  );
   const rooms = useQuery(
     api.tenants.listPrivateRooms,
     publicView || !auth ? "skip" : { tenantSlug, auth, activeOnly: false }
@@ -419,7 +529,15 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
           <Card>
             <h2 className="font-semibold">Comments</h2>
             <div className="mt-3 grid gap-2">
-              {request.comments.map((comment) => <p key={comment._id} className="rounded-xl bg-card/80 p-3 text-sm text-muted-foreground">{comment.bodyMarkdown}</p>)}
+              {request.comments.map((comment) => (
+                <div key={comment._id} className="rounded-xl bg-card/80 p-3 text-sm text-muted-foreground">
+                  <p className="text-foreground">{comment.bodyMarkdown}</p>
+                  <p className="mt-2 text-xs">
+                    {comment.authorName ?? "Unknown author"} · {formatAuditTime(comment.createdAt)}
+                    {comment.editedAt ? ` · edited ${formatAuditTime(comment.editedAt)}` : ""}
+                  </p>
+                </div>
+              ))}
               {request.comments.length === 0 ? <p className="text-sm text-muted-foreground">No comments yet.</p> : null}
             </div>
             {!publicView ? (
@@ -429,6 +547,7 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
               </form>
             ) : null}
           </Card>
+          <BookingTimeline events={timeline as TimelineEvent[] | undefined} />
         </div>
         <div className="grid content-start gap-5">
           {!publicView ? (

@@ -323,10 +323,56 @@ export default defineSchema({
     tenantId: v.id("tenants"),
     requestId: v.id("bookingRequests"),
     authorUserId: v.optional(v.id("users")),
+    authorName: v.optional(v.string()),
+    authorEmail: v.optional(v.string()),
     bodyMarkdown: v.string(),
     internal: v.boolean(),
     createdAt: v.number(),
-  }).index("by_request", ["requestId"]),
+    editedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_request", ["requestId"])
+    .index("by_tenant_request_created", ["tenantId", "requestId", "createdAt"]),
+
+  auditEvents: defineTable({
+    tenantId: v.id("tenants"),
+    eventType: v.string(),
+    entityType: v.string(),
+    entityId: v.string(),
+    bookingId: v.optional(v.id("bookingRequests")),
+    actorUserId: v.optional(v.id("users")),
+    actorName: v.optional(v.string()),
+    actorEmail: v.optional(v.string()),
+    visibility: v.union(
+      v.literal("public"),
+      v.literal("requester"),
+      v.literal("staff"),
+      v.literal("admin"),
+      v.literal("developer")
+    ),
+    severity: v.union(
+      v.literal("info"),
+      v.literal("warning"),
+      v.literal("critical")
+    ),
+    message: v.string(),
+    metadata: v.optional(v.any()),
+    diff: v.optional(
+      v.array(
+        v.object({
+          field: v.string(),
+          before: v.any(),
+          after: v.any(),
+        })
+      )
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_tenant_created", ["tenantId", "createdAt"])
+    .index("by_tenant_booking_created", ["tenantId", "bookingId", "createdAt"])
+    .index("by_tenant_actor_created", ["tenantId", "actorUserId", "createdAt"])
+    .index("by_tenant_event_created", ["tenantId", "eventType", "createdAt"])
+    .index("by_tenant_entity_created", ["tenantId", "entityType", "entityId", "createdAt"]),
 
   notifications: defineTable({
     tenantId: v.id("tenants"),
