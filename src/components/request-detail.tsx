@@ -1666,24 +1666,26 @@ export function RequestDetail({
 
                 <div className="grid gap-2">
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        onClick={approveBooking}
-                        disabled={statusBusy}
-                        className="w-full"
-                      >
-                        {statusBusy ? (
-                          <LoaderCircle
-                            className="size-4 animate-spin"
-                            aria-hidden
-                          />
-                        ) : (
-                          <CheckCircle className="size-4" aria-hidden />
-                        )}
-                        Approve
-                      </Button>
-                    </TooltipTrigger>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          onClick={approveBooking}
+                          disabled={statusBusy}
+                          className="w-full"
+                        >
+                          {statusBusy ? (
+                            <LoaderCircle
+                              className="size-4 animate-spin"
+                              aria-hidden
+                            />
+                          ) : (
+                            <CheckCircle className="size-4" aria-hidden />
+                          )}
+                          Approve
+                        </Button>
+                      }
+                    />
                     <TooltipContent side="left">
                       Approve and confirm the booking. A room must be assigned
                       first.
@@ -1691,34 +1693,38 @@ export function RequestDetail({
                   </Tooltip>
 
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => openReasonDialog("Declined")}
-                        disabled={statusBusy}
-                        className="w-full"
-                      >
-                        Decline
-                      </Button>
-                    </TooltipTrigger>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => openReasonDialog("Declined")}
+                          disabled={statusBusy}
+                          className="w-full"
+                        >
+                          Decline
+                        </Button>
+                      }
+                    />
                     <TooltipContent side="left">
                       Decline this booking request with an optional reason.
                     </TooltipContent>
                   </Tooltip>
 
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => openReasonDialog("Cancelled")}
-                        disabled={statusBusy}
-                        className="w-full"
-                      >
-                        Cancel
-                      </Button>
-                    </TooltipTrigger>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => openReasonDialog("Cancelled")}
+                          disabled={statusBusy}
+                          className="w-full"
+                        >
+                          Cancel
+                        </Button>
+                      }
+                    />
                     <TooltipContent side="left">
                       Cancel this booking with an optional reason.
                     </TooltipContent>
@@ -1727,36 +1733,40 @@ export function RequestDetail({
                   <Separator />
 
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() =>
-                          void runStatusUpdate({ status: "Pending" })
-                        }
-                        disabled={statusBusy}
-                        className="w-full"
-                      >
-                        Move to Pending
-                      </Button>
-                    </TooltipTrigger>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            void runStatusUpdate({ status: "Pending" })
+                          }
+                          disabled={statusBusy}
+                          className="w-full"
+                        >
+                          Move to Pending
+                        </Button>
+                      }
+                    />
                     <TooltipContent side="left">
                       Return the booking to Pending for further review.
                     </TooltipContent>
                   </Tooltip>
 
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={completeBooking}
-                        disabled={statusBusy}
-                        className="w-full"
-                      >
-                        Mark Completed
-                      </Button>
-                    </TooltipTrigger>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={completeBooking}
+                          disabled={statusBusy}
+                          className="w-full"
+                        >
+                          Mark Completed
+                        </Button>
+                      }
+                    />
                     <TooltipContent side="left">
                       Mark as completed. Requires a staff override if the
                       booking has not yet ended.
