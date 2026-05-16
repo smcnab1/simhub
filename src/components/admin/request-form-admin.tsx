@@ -237,7 +237,7 @@ function CustomFieldRow({
               }
             >
               <SelectTrigger id={`field-type-${field.id}`} className="h-8 text-sm">
-                <SelectValue />
+                <SelectValue>{fieldTypeLabels[field.type]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {fieldTypes.map((type) => (
