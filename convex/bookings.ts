@@ -302,6 +302,24 @@ function statusEventType(status: Doc<"bookingRequests">["status"]) {
   return "booking.status_changed" as const;
 }
 
+function bookingHasEnded(request: Doc<"bookingRequests">) {
+  const latestEnd = Math.max(...request.blocks.map((block) => Date.parse(block.end)));
+  return Number.isFinite(latestEnd) && latestEnd <= Date.now();
+}
+
+function requiresRoomSafetyCheck(status: Doc<"bookingRequests">["status"]) {
+  return status === "Approved" || status === "Confirmed";
+}
+
+function isStaffOverrideRole(role?: string) {
+  return role === "Developer" || role === "Admin" || role === "Staff";
+}
+
+function reasonOrUndefined(reason?: string) {
+  const trimmed = reason?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 async function verifiedBookingNoticeOverrideRole(
   ctx: QueryCtx | MutationCtx,
   tenantSlug: string,
@@ -1311,8 +1329,18 @@ export const updateStatus = mutation({
     tenantSlug: v.string(),
     auth: authContextValidator,
     requestId: v.id("bookingRequests"),
-    status: v.union(v.literal("Pending"), v.literal("Approved"), v.literal("Confirmed"), v.literal("Completed"), v.literal("Declined"), v.literal("Cancelled")),
+    status: v.union(
+      v.literal("Pending"),
+      v.literal("Approved"),
+      v.literal("Confirmed"),
+      v.literal("Completed"),
+      v.literal("Declined"),
+      v.literal("Cancelled")
+    ),
     assignedRoomIds: v.optional(v.array(v.id("rooms"))),
+    reason: v.optional(v.string()),
+    allowConflictOverride: v.optional(v.boolean()),
+    allowCompletedOverride: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
@@ -1336,6 +1364,40 @@ export const updateStatus = mutation({
       requestedRoomIds: assignedRoomIds,
       excludeRequestId: request._id,
     });
+
+    const reason = reasonOrUndefined(args.reason);
+
+    if (requiresRoomSafetyCheck(args.status)) {
+      if (assignedRoomIds.length === 0) {
+        throw new Error("Assign at least one room before approving or confirming this booking.");
+      }
+    
+      const blockingConflicts = conflictMetadata.conflicts.filter(
+        (conflict) => conflict.severity === "likely_unavailable"
+      );
+    
+      if (blockingConflicts.length > 0 && !args.allowConflictOverride) {
+        throw new Error(
+          `This booking has room conflicts and cannot be ${args.status.toLowerCase()} without staff override. ${conflictMetadata.summary}`
+        );
+      }
+    }
+    
+    if ((args.status === "Declined" || args.status === "Cancelled") && reason) {
+      // Optional reason accepted - no block.
+    }
+    
+    if (args.status === "Completed") {
+      const canComplete =
+        bookingHasEnded(request) ||
+        (args.allowCompletedOverride && isStaffOverrideRole(user?.role));
+    
+      if (!canComplete) {
+        throw new Error(
+          "This booking cannot be marked as completed until after the booking end time unless a staff override is used."
+        );
+      }
+    }
 
     const now = Date.now();
     const patch = {
@@ -1365,11 +1427,16 @@ export const updateStatus = mutation({
       actor: actorFromUser(user),
       visibility: "requester",
       severity: args.status === "Declined" || args.status === "Cancelled" ? "warning" : "info",
-      message: `Booking status changed from ${request.status} to ${args.status}`,
+      message: reason
+      ? `Booking status changed from ${request.status} to ${args.status}: ${reason}`
+      : `Booking status changed from ${request.status} to ${args.status}`,
       metadata: {
         previousStatus: request.status,
         status: args.status,
         conflictSummary: conflictMetadata.summary,
+        reason,
+        allowConflictOverride: args.allowConflictOverride ?? false,
+        allowCompletedOverride: args.allowCompletedOverride ?? false,
       },
       diff: compactDiff(
         {
