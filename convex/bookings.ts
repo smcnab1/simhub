@@ -80,6 +80,22 @@ async function withAssignedRooms(ctx: QueryCtx, request: Doc<"bookingRequests">)
   };
 }
 
+async function toPublicEvent(ctx: QueryCtx, request: Doc<"bookingRequests">) {
+  const rooms = await Promise.all(
+    request.assignedRoomIds.map((roomId: Id<"rooms">) => ctx.db.get(roomId))
+  );
+
+  return {
+    _id: request._id,
+    sessionName: request.sessionName,
+    timezone: request.timezone,
+    blocks: request.blocks,
+    assignedRooms: rooms
+      .filter((room): room is Doc<"rooms"> => room !== null)
+      .map((room) => ({ code: room.code, name: room.name })),
+  };
+}
+
 function bookingEndsInFuture(request: Doc<"bookingRequests">) {
   const latestEnd = Math.max(...request.blocks.map((block) => Date.parse(block.end)));
   return Number.isFinite(latestEnd) && latestEnd > Date.now();
@@ -849,7 +865,7 @@ export const listPublicEvents = query({
     if (!tenant) return [];
     const requests = await ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", tenant._id).eq("status", "Approved")).collect();
     const filtered = requests.filter((request) => request.blocks.some((block) => block.start.startsWith(args.month)));
-    return await Promise.all(filtered.map((request) => withAssignedRooms(ctx, request)));
+    return await Promise.all(filtered.map((request) => toPublicEvent(ctx, request)));
   },
 });
 
