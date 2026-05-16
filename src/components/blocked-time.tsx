@@ -17,6 +17,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useDashboardAuth } from "@/components/dashboard-auth";
 import { Button } from "@/components/ui/button";
+import { enGB } from "date-fns/locale"
 import {
   Dialog,
   DialogContent,
@@ -452,6 +453,7 @@ export function BlockedTimeForm({
                 <CalendarPicker
                   mode="single"
                   selected={startDate}
+                  locale={enGB}
                   onSelect={(date) => {
                     if (date) {
                       setStartDate(date);
