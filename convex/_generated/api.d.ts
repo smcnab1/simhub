@@ -10,6 +10,7 @@
 
 import type * as audit from "../audit.js";
 import type * as authz from "../authz.js";
+import type * as blockedTimes from "../blockedTimes.js";
 import type * as bookings from "../bookings.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as files from "../files.js";
@@ -25,6 +26,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   audit: typeof audit;
   authz: typeof authz;
+  blockedTimes: typeof blockedTimes;
   bookings: typeof bookings;
   bootstrap: typeof bootstrap;
   files: typeof files;
