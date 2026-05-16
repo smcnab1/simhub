@@ -209,14 +209,14 @@ export function BlockedTimeForm({
   const [scope, setScope] = useState<BlockedTimeScope>(
     initialData?.scope ?? "Room"
   );
-  const [roomId, setRoomId] = useState<Id<"rooms"> | undefined>(
-    initialData?.roomId
+  const [roomId, setRoomId] = useState<string>(
+    initialData?.roomId ?? ""
   );
-  const [roomTypeId, setRoomTypeId] = useState<Id<"roomTypes"> | undefined>(
-    initialData?.roomTypeId
+  const [roomTypeId, setRoomTypeId] = useState<string>(
+    initialData?.roomTypeId ?? ""
   );
-  const [campusId, setCampusId] = useState<Id<"campuses"> | undefined>(
-    initialData?.campusId
+  const [campusId, setCampusId] = useState<string>(
+    initialData?.campusId ?? ""
   );
 
   const now = new Date();
@@ -244,9 +244,9 @@ export function BlockedTimeForm({
   // Reset target when scope changes
   const handleScopeChange = (newScope: BlockedTimeScope) => {
     setScope(newScope);
-    setRoomId(undefined);
-    setRoomTypeId(undefined);
-    setCampusId(undefined);
+    setRoomId("");
+    setRoomTypeId("");
+    setCampusId("");
   };
 
   // Validation
@@ -296,9 +296,9 @@ export function BlockedTimeForm({
         tenantSlug,
         auth,
         scope,
-        roomId: scope === "Room" ? roomId : undefined,
-        roomTypeId: scope === "RoomType" ? roomTypeId : undefined,
-        campusId: scope === "Campus" ? campusId : undefined,
+        roomId: scope === "Room" && roomId ? (roomId as Id<"rooms">) : undefined,
+        roomTypeId: scope === "RoomType" && roomTypeId ? (roomTypeId as Id<"roomTypes">) : undefined,
+        campusId: scope === "Campus" && campusId ? (campusId as Id<"campuses">) : undefined,
         start: startDateTime,
         end: endDateTime,
         reason: reason.trim(),
@@ -374,7 +374,7 @@ export function BlockedTimeForm({
           <Label htmlFor="room">Room</Label>
           <Select
             value={roomId}
-            onValueChange={(v) => setRoomId(v as Id<"rooms">)}
+            onValueChange={(v) => setRoomId(v ?? "")}
           >
             <SelectTrigger id="room" className="w-full">
               <SelectValue placeholder="Select room" />
@@ -395,7 +395,7 @@ export function BlockedTimeForm({
           <Label htmlFor="roomType">Room Type</Label>
           <Select
             value={roomTypeId}
-            onValueChange={(v) => setRoomTypeId(v as Id<"roomTypes">)}
+            onValueChange={(v) => setRoomTypeId(v ?? "")}
           >
             <SelectTrigger id="roomType" className="w-full">
               <SelectValue placeholder="Select room type" />
@@ -416,7 +416,7 @@ export function BlockedTimeForm({
           <Label htmlFor="campus">Campus</Label>
           <Select
             value={campusId}
-            onValueChange={(v) => setCampusId(v as Id<"campuses">)}
+            onValueChange={(v) => setCampusId(v ?? "")}
           >
             <SelectTrigger id="campus" className="w-full">
               <SelectValue placeholder="Select campus" />
