@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useState, useEffect } from "react"
 import {
   Collapsible,
   CollapsibleContent,
@@ -27,6 +28,58 @@ function isItemActive(item: NavigationItem, pathname: string): boolean {
   return item.items?.some((child) => isItemActive(child, pathname)) ?? false
 }
 
+function NavItem({ item, pathname }: { item: NavigationItem; pathname: string }) {
+  const Icon = item.icon
+  const isActive = isItemActive(item, pathname)
+  const [open, setOpen] = useState(isActive)
+
+  // Auto-expand when navigating to a child route
+  useEffect(() => {
+    if (isActive && !open) {
+      setOpen(true)
+    }
+  }, [isActive, open])
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+      <SidebarMenuButton
+        tooltip={item.title}
+        isActive={isActive}
+        render={<Link href={item.url} />}
+      >
+        {Icon ? <Icon /> : null}
+        <span>{item.title}</span>
+      </SidebarMenuButton>
+      {item.items?.length ? (
+        <>
+          <CollapsibleTrigger
+            render={
+              <SidebarMenuAction className="aria-expanded:rotate-90" />
+            }
+          >
+            <ChevronRightIcon />
+            <span className="sr-only">Toggle</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenuSub>
+              {item.items.map((subItem) => (
+                <SidebarMenuSubItem key={subItem.title}>
+                  <SidebarMenuSubButton
+                    isActive={isItemActive(subItem, pathname)}
+                    render={<Link href={subItem.url} />}
+                  >
+                    <span>{subItem.title}</span>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              ))}
+            </SidebarMenuSub>
+          </CollapsibleContent>
+        </>
+      ) : null}
+    </Collapsible>
+  )
+}
+
 export function NavMain({
   groups,
 }: {
@@ -40,53 +93,9 @@ export function NavMain({
         <SidebarGroup key={group.title}>
           <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
           <SidebarMenu>
-            {group.items.map((item) => {
-              const Icon = item.icon
-              const isActive = isItemActive(item, pathname)
-
-              return (
-                <Collapsible
-                  key={item.title}
-                  defaultOpen={isActive}
-                  render={<SidebarMenuItem />}
-                >
-                  <SidebarMenuButton
-                    tooltip={item.title}
-                    isActive={isActive}
-                    render={<Link href={item.url} />}
-                  >
-                    {Icon ? <Icon /> : null}
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                  {item.items?.length ? (
-                    <>
-                      <CollapsibleTrigger
-                        render={
-                          <SidebarMenuAction className="aria-expanded:rotate-90" />
-                        }
-                      >
-                        <ChevronRightIcon />
-                        <span className="sr-only">Toggle</span>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <SidebarMenuSub>
-                          {item.items.map((subItem) => (
-                            <SidebarMenuSubItem key={subItem.title}>
-                              <SidebarMenuSubButton
-                                isActive={isItemActive(subItem, pathname)}
-                                render={<Link href={subItem.url} />}
-                              >
-                                <span>{subItem.title}</span>
-                              </SidebarMenuSubButton>
-                            </SidebarMenuSubItem>
-                          ))}
-                        </SidebarMenuSub>
-                      </CollapsibleContent>
-                    </>
-                  ) : null}
-                </Collapsible>
-              )
-            })}
+            {group.items.map((item) => (
+              <NavItem key={item.title} item={item} pathname={pathname} />
+            ))}
           </SidebarMenu>
         </SidebarGroup>
       ))}
