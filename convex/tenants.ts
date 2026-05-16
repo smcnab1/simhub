@@ -1106,10 +1106,29 @@ export const upsertFacilityDetails = mutation({
     notificationEmails: v.array(v.string()),
     hoursOfOperation: v.string(),
     uploadMaxBytes: v.number(),
+    minimumAdvanceBookingDays: v.optional(v.number()),
+    maximumAdvanceBookingDays: v.optional(v.number()),
+    bookingNoticeViolationMode: v.union(v.literal("Block"), v.literal("Warn")),
     logoStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const { tenant } = await requireAdmin(ctx, args.tenantSlug, args.auth);
+    const minimumAdvanceBookingDays =
+      args.minimumAdvanceBookingDays === undefined
+        ? undefined
+        : Math.max(0, Math.floor(args.minimumAdvanceBookingDays));
+    const maximumAdvanceBookingDays =
+      args.maximumAdvanceBookingDays === undefined
+        ? undefined
+        : Math.max(0, Math.floor(args.maximumAdvanceBookingDays));
+
+    if (
+      minimumAdvanceBookingDays !== undefined &&
+      maximumAdvanceBookingDays !== undefined &&
+      minimumAdvanceBookingDays > maximumAdvanceBookingDays
+    ) {
+      throw new Error("Minimum advance notice cannot be greater than the maximum future booking window.");
+    }
 
     await ctx.db.patch(tenant._id, {
       name: args.name,
@@ -1117,6 +1136,9 @@ export const upsertFacilityDetails = mutation({
       notificationEmails: args.notificationEmails,
       hoursOfOperation: args.hoursOfOperation,
       uploadMaxBytes: args.uploadMaxBytes,
+      minimumAdvanceBookingDays,
+      maximumAdvanceBookingDays,
+      bookingNoticeViolationMode: args.bookingNoticeViolationMode,
       logoStorageId: args.logoStorageId,
     });
   },

@@ -4,8 +4,10 @@ import {
   bookingDurationMinutes,
   bookingBlocksFromSessionWindow,
   checkAvailabilityConflicts,
+  evaluateBookingNoticeWindow,
   formatBookingDuration,
   hasBookingConflict,
+  occupancyDurationMinutes,
   occupiedBookingWindow,
   rangesOverlap,
   roomTypeBufferMinutes,
@@ -14,6 +16,7 @@ import {
   validateMaxBookingDuration,
   validateSessionWithinOpeningHours,
   validateRoomSelectionState,
+  sessionDurationMinutes,
   type AssignedBooking,
   type BookingBlock,
   type BookingRange,
@@ -226,6 +229,17 @@ describe("booking block validation", () => {
     ).toBeNull();
   });
 
+  it("reports separate occupancy and session durations", () => {
+    const blocks: BookingBlock[] = [
+      { label: "Setup", start: "2026-05-18T08:00:00+01:00", end: "2026-05-18T09:00:00+01:00" },
+      { label: "Session", start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T17:00:00+01:00" },
+      { label: "Cleanup", start: "2026-05-18T17:00:00+01:00", end: "2026-05-18T18:00:00+01:00" },
+    ];
+
+    expect(sessionDurationMinutes(blocks)).toBe(480);
+    expect(occupancyDurationMinutes(blocks)).toBe(600);
+  });
+
   it("rejects cleanup before the session ends", () => {
     expect(
       validateBookingBlocks([
@@ -249,6 +263,67 @@ describe("booking block validation", () => {
         end: "2026-05-18T11:00:00.000Z",
       },
     ]);
+  });
+});
+
+describe("booking notice windows", () => {
+  it("blocks public bookings inside the minimum notice window", () => {
+    const result = evaluateBookingNoticeWindow({
+      sessionStart: "2026-05-19T09:00:00+01:00",
+      now: new Date("2026-05-16T08:00:00+01:00"),
+      timezone: "Europe/London",
+      rules: {
+        minimumAdvanceBookingDays: 5,
+        violationMode: "Block",
+      },
+    });
+
+    expect(result.canSubmit).toBe(false);
+    expect(result.violations[0]?.message).toBe("Bookings require at least 5 days notice.");
+  });
+
+  it("allows warning-mode notice violations as additional approval", () => {
+    const result = evaluateBookingNoticeWindow({
+      sessionStart: "2026-09-01T09:00:00+01:00",
+      now: new Date("2026-05-16T08:00:00+01:00"),
+      timezone: "Europe/London",
+      rules: {
+        maximumAdvanceBookingDays: 90,
+        violationMode: "Warn",
+      },
+    });
+
+    expect(result.canSubmit).toBe(true);
+    expect(result.requiresAdditionalApproval).toBe(true);
+    expect(result.violations[0]?.message).toBe("Bookings cannot be made more than 90 days in advance.");
+  });
+
+  it("requires staff acknowledgement before overriding block-mode notice violations", () => {
+    const unacknowledged = evaluateBookingNoticeWindow({
+      sessionStart: "2026-05-19T09:00:00+01:00",
+      now: new Date("2026-05-16T08:00:00+01:00"),
+      timezone: "Europe/London",
+      canOverride: true,
+      rules: {
+        minimumAdvanceBookingDays: 5,
+        violationMode: "Block",
+      },
+    });
+    const acknowledged = evaluateBookingNoticeWindow({
+      sessionStart: "2026-05-19T09:00:00+01:00",
+      now: new Date("2026-05-16T08:00:00+01:00"),
+      timezone: "Europe/London",
+      canOverride: true,
+      overrideAcknowledged: true,
+      rules: {
+        minimumAdvanceBookingDays: 5,
+        violationMode: "Block",
+      },
+    });
+
+    expect(unacknowledged.canSubmit).toBe(false);
+    expect(unacknowledged.overrideRequired).toBe(true);
+    expect(acknowledged.canSubmit).toBe(true);
   });
 });
 

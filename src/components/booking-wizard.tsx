@@ -6,6 +6,7 @@ import { AlertTriangle, Check, Clock, DoorOpen, Info, LoaderCircle, Search, Uplo
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, formFieldClass, primaryButtonClass, subtleButtonClass } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,8 +25,11 @@ import { zonedDateTimeToIso } from "@/lib/date-time";
 import { formatBlockTime } from "@/lib/format";
 import {
   bookingBlocksFromSessionWindow,
+  evaluateBookingNoticeWindow,
   formatBookingDuration,
+  occupancyDurationMinutes,
   roomTypeBufferMinutes,
+  sessionDurationMinutes,
   validateBookingBlocks,
   validateBookingWithinStaffHours,
   validateRoomSelectionState,
@@ -155,6 +159,7 @@ function renderCustomField(field: {
 }
 
 export function BookingWizard() {
+  const auth = useOptionalDashboardAuth();
   const tenant = useQuery(api.tenants.getBySlug, { slug: TENANT_SLUG });
   const campuses = useQuery(api.tenants.listCampuses, { tenantSlug: TENANT_SLUG });
   const formConfig = useQuery(api.tenants.getFormConfig, { tenantSlug: TENANT_SLUG });
@@ -165,6 +170,8 @@ export function BookingWizard() {
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [trackingId, setTrackingId] = useState<string | null>(null);
+  const [overrideAcknowledged, setOverrideAcknowledged] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
   const [campusId, setCampusId] = useState<Id<"campuses"> | "">("");
   const [roomSelectionMode, setRoomSelectionMode] = useState<RoomSelectionMode>("RoomTypeQuantity");
   const [requestedRoomIds, setRequestedRoomIds] = useState<Id<"rooms">[]>([]);
@@ -315,11 +322,55 @@ export function BookingWizard() {
     },
     [bookingBlocks, tenant?.hoursOfOperation, tenant?.timezone]
   );
+  const canOverrideBookingNotice =
+    auth?.role === "Developer" || auth?.role === "Admin" || auth?.role === "Staff";
+  const bookingNotice = useMemo(
+    () =>
+      bookingBlocks
+        ? evaluateBookingNoticeWindow({
+            sessionStart:
+              bookingBlocks.find((block) => block.label === "Session")?.start ??
+              bookingBlocks[1]?.start ??
+              "",
+            rules: {
+              minimumAdvanceBookingDays: tenant?.minimumAdvanceBookingDays,
+              maximumAdvanceBookingDays: tenant?.maximumAdvanceBookingDays,
+              violationMode: tenant?.bookingNoticeViolationMode ?? "Block",
+            },
+            timezone: tenant?.timezone ?? "UTC",
+            canOverride: canOverrideBookingNotice,
+            overrideAcknowledged,
+          })
+        : null,
+    [
+      bookingBlocks,
+      canOverrideBookingNotice,
+      overrideAcknowledged,
+      tenant?.bookingNoticeViolationMode,
+      tenant?.maximumAdvanceBookingDays,
+      tenant?.minimumAdvanceBookingDays,
+      tenant?.timezone,
+    ]
+  );
+  const bookingNoticeBlocksSubmission =
+    bookingNotice !== null &&
+    bookingNotice.violations.length > 0 &&
+    !bookingNotice.canSubmit;
+  const sessionLength = useMemo(
+    () => (bookingBlocks ? sessionDurationMinutes(bookingBlocks) : null),
+    [bookingBlocks]
+  );
+  const occupancyLength = useMemo(
+    () => (bookingBlocks ? occupancyDurationMinutes(bookingBlocks) : null),
+    [bookingBlocks]
+  );
   const availabilityRequest = useMemo(
     () =>
       bookingBlocks && !roomSelectionError && !timeError
         ? {
             tenantSlug: TENANT_SLUG,
+            auth: auth ?? undefined,
+            overrideAcknowledged,
             roomSelectionMode,
             blocks: bookingBlocks
               .filter((block) => block.label === "Session")
@@ -334,7 +385,7 @@ export function BookingWizard() {
                 : [],
           }
         : null,
-    [bookingBlocks, requestedRoomIds, roomSelectionError, roomSelectionMode, selectedRoomTypeRequests, timeError]
+    [auth, bookingBlocks, overrideAcknowledged, requestedRoomIds, roomSelectionError, roomSelectionMode, selectedRoomTypeRequests, timeError]
   );
   const availabilityRequestKey = useMemo(
     () => (availabilityRequest ? JSON.stringify(availabilityRequest) : ""),
@@ -408,6 +459,15 @@ export function BookingWizard() {
       return;
     }
 
+    if (bookingNoticeBlocksSubmission) {
+      setFormError(
+        bookingNotice?.canOverride
+          ? `${bookingNotice.violations[0]?.message ?? "Booking notice limits were exceeded."} Tick the override acknowledgement to continue.`
+          : bookingNotice?.violations[0]?.message ?? "Booking notice limits were exceeded."
+      );
+      return;
+    }
+
     if (availability && !availability.canSubmit) {
       setFormError(availability.conflicts[0]?.message ?? availability.summary);
       return;
@@ -430,6 +490,9 @@ export function BookingWizard() {
       const requesterEmail = value(form, "requesterEmail");
       const requestId = await createRequest({
         tenantSlug: TENANT_SLUG,
+        auth: auth ?? undefined,
+        overrideAcknowledged,
+        overrideReason: overrideReason.trim() || undefined,
         requesterName: value(form, "requesterName"),
         requesterEmail,
         requesterPhone: value(form, "requesterPhone") || undefined,
@@ -456,6 +519,8 @@ export function BookingWizard() {
       setRequestedRoomIds([]);
       setRoomSearch("");
       setSelectionTouched(false);
+      setOverrideAcknowledged(false);
+      setOverrideReason("");
       setCampusId("");
       setTimeInputs({
         date: "",
@@ -480,6 +545,7 @@ export function BookingWizard() {
 
   function setTimeInput(name: keyof BookingTimeInputs, rawValue: string) {
     setTimeInputs((current) => ({ ...current, [name]: rawValue }));
+    setOverrideAcknowledged(false);
   }
 
   function setSelectionMode(mode: RoomSelectionMode) {
@@ -676,6 +742,38 @@ export function BookingWizard() {
             <label className="text-sm font-medium text-foreground">Session finish<input name="sessionEnd" type="time" required value={timeInputs.sessionEnd} onInput={(event) => setTimeInput("sessionEnd", event.currentTarget.value)} onChange={(event) => setTimeInput("sessionEnd", event.currentTarget.value)} className={formFieldClass} /></label>
           </div>
           {timeError ? <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{timeError}</p> : null}
+          {bookingNotice?.violations.length ? (
+            <div className={`mt-3 rounded-xl border p-3 text-sm ${bookingNotice.canSubmit ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200" : "border-destructive/30 bg-destructive/10 text-destructive"}`}>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {bookingNotice.violations.map((violation) => violation.message).join(" ")}
+                  </p>
+                  {bookingNotice.canSubmit ? (
+                    <p className="mt-1">Your request will require additional approval.</p>
+                  ) : null}
+                  {bookingNotice.canOverride ? (
+                    <div className="mt-3 grid gap-2 rounded-lg border border-current/20 bg-background/50 p-3">
+                      <Label className="flex items-start gap-2 text-sm font-medium">
+                        <Checkbox
+                          checked={overrideAcknowledged}
+                          onCheckedChange={(checked) => setOverrideAcknowledged(checked === true)}
+                        />
+                        <span>I acknowledge this booking is outside the normal notice window.</span>
+                      </Label>
+                      <Textarea
+                        value={overrideReason}
+                        onChange={(event) => setOverrideReason(event.currentTarget.value)}
+                        placeholder="Optional override reason"
+                        className="min-h-20 bg-background"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
           {bookingBlocks && !timeError ? (
             <div className="mt-3 grid gap-2 text-sm text-muted-foreground md:grid-cols-3">
               {bookingBlocks.map((block) => (
@@ -754,10 +852,27 @@ export function BookingWizard() {
               </span>
             </p>
             <p>
+              Session length: <span className="font-medium text-foreground">
+                {sessionLength !== null ? formatBookingDuration(sessionLength) : "Complete session times to preview"}
+              </span>
+            </p>
+            <p>
+              Reserved room time: <span className="font-medium text-foreground">
+                {occupancyLength !== null ? formatBookingDuration(occupancyLength) : "Complete session times to preview"}
+              </span>
+            </p>
+            <p>
               Occupied window: <span className="font-medium text-foreground">
                 {bookingBlocks ? formatBlockTime({ start: bookingBlocks[0].start, end: bookingBlocks[2].end }, tenant?.timezone) : "Complete date and session times to preview"}
               </span>
             </p>
+            {bookingNotice?.violations.length ? (
+              <p>
+                Notice window: <span className="font-medium text-foreground">
+                  {bookingNotice.canSubmit ? "Additional approval required" : "Cannot submit until resolved"}
+                </span>
+              </p>
+            ) : null}
             <p>
               Availability: <span className="font-medium text-foreground">
                 {availability?.summary ?? "Availability will be checked before submission."}
@@ -767,7 +882,7 @@ export function BookingWizard() {
           <p className="mt-3 text-sm text-muted-foreground">Submission creates a Pending request and notifies staff. You can track it with the booking reference and requester email.</p>
           {formError ? <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{formError}</p> : null}
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button disabled={submitting} className={primaryButtonClass}>
+            <button disabled={submitting || bookingNoticeBlocksSubmission} className={primaryButtonClass}>
               {submitting ? "Submitting..." : "Submit request"}
             </button>
             <Link href="/calendar" className={subtleButtonClass}>Back to calendar</Link>

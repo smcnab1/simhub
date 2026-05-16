@@ -16,6 +16,11 @@ const tenantSeedValidator = v.object({
   notificationEmails: v.optional(v.array(v.string())),
   hoursOfOperation: v.optional(v.string()),
   uploadMaxBytes: v.optional(v.number()),
+  minimumAdvanceBookingDays: v.optional(v.number()),
+  maximumAdvanceBookingDays: v.optional(v.number()),
+  bookingNoticeViolationMode: v.optional(
+    v.union(v.literal("Block"), v.literal("Warn"))
+  ),
   workosOrganizationId: v.optional(v.string()),
 });
 
@@ -38,6 +43,9 @@ type TenantSeed = {
   notificationEmails?: string[];
   hoursOfOperation?: string;
   uploadMaxBytes?: number;
+  minimumAdvanceBookingDays?: number;
+  maximumAdvanceBookingDays?: number;
+  bookingNoticeViolationMode?: "Block" | "Warn";
   workosOrganizationId?: string;
 };
 
@@ -82,6 +90,9 @@ function seededTenant(input?: TenantSeed): TenantSeed {
     ],
     hoursOfOperation: input?.hoursOfOperation?.trim() || "Mon-Fri 08:00-18:00",
     uploadMaxBytes: input?.uploadMaxBytes ?? 104_857_600,
+    minimumAdvanceBookingDays: input?.minimumAdvanceBookingDays,
+    maximumAdvanceBookingDays: input?.maximumAdvanceBookingDays,
+    bookingNoticeViolationMode: input?.bookingNoticeViolationMode ?? "Block",
     workosOrganizationId: input?.workosOrganizationId?.trim() || undefined,
   };
 }
@@ -102,6 +113,9 @@ async function upsertTenant(ctx: MutationCtx, seed: TenantSeed) {
     ],
     hoursOfOperation: seed.hoursOfOperation ?? "Mon-Fri 08:00-18:00",
     uploadMaxBytes: seed.uploadMaxBytes ?? 104_857_600,
+    minimumAdvanceBookingDays: seed.minimumAdvanceBookingDays,
+    maximumAdvanceBookingDays: seed.maximumAdvanceBookingDays,
+    bookingNoticeViolationMode: seed.bookingNoticeViolationMode ?? "Block",
     workosOrganizationId: seed.workosOrganizationId,
   };
 
