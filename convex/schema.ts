@@ -11,6 +11,11 @@ export default defineSchema({
     hoursOfOperation: v.string(),
     logoStorageId: v.optional(v.id("_storage")),
     uploadMaxBytes: v.number(),
+    minimumAdvanceBookingDays: v.optional(v.number()),
+    maximumAdvanceBookingDays: v.optional(v.number()),
+    bookingNoticeViolationMode: v.optional(
+      v.union(v.literal("Block"), v.literal("Warn"))
+    ),
     workosOrganizationId: v.optional(v.string()),
   })
     .index("by_slug", ["slug"])
@@ -204,6 +209,7 @@ export default defineSchema({
           v.object({
             type: v.union(
               v.literal("invalid_time"),
+              v.literal("booking_notice"),
               v.literal("duration_rule"),
               v.literal("exact_room_overlap"),
               v.literal("pending_overlap"),
@@ -238,6 +244,40 @@ export default defineSchema({
             overlapEnd: v.optional(v.string()),
           })
         ),
+      })
+    ),
+
+    bookingNoticeMetadata: v.optional(
+      v.object({
+        rules: v.object({
+          minimumAdvanceBookingDays: v.optional(v.number()),
+          maximumAdvanceBookingDays: v.optional(v.number()),
+          violationMode: v.union(v.literal("Block"), v.literal("Warn")),
+        }),
+        canOverride: v.boolean(),
+        overrideAcknowledged: v.boolean(),
+        overrideReason: v.optional(v.string()),
+        overriddenByRole: v.optional(
+          v.union(
+            v.literal("Developer"),
+            v.literal("Admin"),
+            v.literal("Staff")
+          )
+        ),
+        requiresAdditionalApproval: v.boolean(),
+        violations: v.array(
+          v.object({
+            type: v.union(
+              v.literal("minimum_advance"),
+              v.literal("maximum_advance")
+            ),
+            message: v.string(),
+            limitDays: v.number(),
+            daysFromNow: v.number(),
+            requiresAdditionalApproval: v.boolean(),
+          })
+        ),
+        evaluatedAt: v.number(),
       })
     ),
 

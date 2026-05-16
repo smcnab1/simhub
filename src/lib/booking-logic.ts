@@ -54,6 +54,7 @@ export type AvailabilityConflictSeverity =
 
 export type AvailabilityConflictType =
   | "invalid_time"
+  | "booking_notice"
   | "duration_rule"
   | "exact_room_overlap"
   | "pending_overlap"
@@ -86,6 +87,38 @@ export type AvailabilityCheckResult = {
   highestSeverity?: AvailabilityConflictSeverity;
   summary: string;
   conflicts: AvailabilityConflict[];
+};
+
+export type BookingNoticeViolationMode = "Block" | "Warn";
+
+export type BookingNoticeRules = {
+  minimumAdvanceBookingDays?: number;
+  maximumAdvanceBookingDays?: number;
+  violationMode: BookingNoticeViolationMode;
+};
+
+export type BookingNoticeViolationType =
+  | "minimum_advance"
+  | "maximum_advance";
+
+export type BookingNoticeViolation = {
+  type: BookingNoticeViolationType;
+  message: string;
+  limitDays: number;
+  daysFromNow: number;
+  requiresAdditionalApproval: boolean;
+};
+
+export type BookingNoticeEvaluation = {
+  canSubmit: boolean;
+  requiresAdditionalApproval: boolean;
+  canOverride: boolean;
+  overrideRequired: boolean;
+  violations: BookingNoticeViolation[];
+};
+
+export const DEFAULT_BOOKING_NOTICE_RULES: BookingNoticeRules = {
+  violationMode: "Block",
 };
 
 export type AvailabilityRoom = {
@@ -155,6 +188,15 @@ export function occupiedBookingWindow(blocks: BookingRange[]): BookingRange[] {
   ];
 }
 
+export function sessionBookingRange(blocks: BookingRange[]) {
+  return (
+    blocks.find(
+      (block): block is BookingBlock =>
+        "label" in block && block.label === "Session"
+    ) ?? blocks[0]
+  );
+}
+
 export function validateBookingBlocks(blocks: BookingBlock[]) {
   const setup = blocks.find((block) => block.label === "Setup");
   const session = blocks.find((block) => block.label === "Session");
@@ -195,6 +237,30 @@ export function sessionBlocksOnly(blocks: BookingRange[]) {
     (block): block is BookingBlock =>
       "label" in block && block.label === "Session"
   );
+}
+
+export function durationMinutesForRange(range: BookingRange) {
+  const start = Date.parse(range.start);
+  const end = Date.parse(range.end);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null;
+  }
+
+  return Math.ceil((end - start) / 60000);
+}
+
+export function occupancyDurationMinutes(blocks: BookingRange[]) {
+  return bookingDurationMinutes(occupiedBookingWindow(blocks));
+}
+
+export function sessionDurationMinutes(blocks: BookingRange[]) {
+  const session = sessionBookingRange(blocks);
+  return session ? durationMinutesForRange(session) : null;
+}
+
+export function validationDurationMinutes(blocks: BookingRange[]) {
+  return sessionDurationMinutes(blocks);
 }
 
 export function roomTypeBufferMinutes(
@@ -550,6 +616,121 @@ export function bookingDurationMinutes(blocks: BookingRange[]) {
   return Math.ceil((latestEnd - earliestStart) / 60000);
 }
 
+function localDateParts(value: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: timezone,
+  }).formatToParts(value);
+
+  return {
+    year: Number(parts.find((part) => part.type === "year")?.value),
+    month: Number(parts.find((part) => part.type === "month")?.value),
+    day: Number(parts.find((part) => part.type === "day")?.value),
+  };
+}
+
+function localDayIndex(value: Date, timezone: string) {
+  const parts = localDateParts(value, timezone);
+  return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000);
+}
+
+function normalizeNoticeRules(
+  rules?: Partial<BookingNoticeRules>
+): BookingNoticeRules {
+  return {
+    minimumAdvanceBookingDays:
+      rules?.minimumAdvanceBookingDays !== undefined
+        ? Math.max(0, Math.floor(rules.minimumAdvanceBookingDays))
+        : undefined,
+    maximumAdvanceBookingDays:
+      rules?.maximumAdvanceBookingDays !== undefined
+        ? Math.max(0, Math.floor(rules.maximumAdvanceBookingDays))
+        : undefined,
+    violationMode: rules?.violationMode ?? DEFAULT_BOOKING_NOTICE_RULES.violationMode,
+  };
+}
+
+export function evaluateBookingNoticeWindow(args: {
+  sessionStart: string;
+  rules?: Partial<BookingNoticeRules>;
+  timezone: string;
+  now?: Date;
+  canOverride?: boolean;
+  overrideAcknowledged?: boolean;
+}): BookingNoticeEvaluation {
+  const rules = normalizeNoticeRules(args.rules);
+  const sessionStart = new Date(args.sessionStart);
+
+  if (!Number.isFinite(sessionStart.getTime())) {
+    return {
+      canSubmit: false,
+      requiresAdditionalApproval: false,
+      canOverride: args.canOverride ?? false,
+      overrideRequired: false,
+      violations: [
+        {
+          type: "minimum_advance",
+          message: "Session start must be a valid date and time.",
+          limitDays: 0,
+          daysFromNow: 0,
+          requiresAdditionalApproval: false,
+        },
+      ],
+    };
+  }
+
+  const todayIndex = localDayIndex(args.now ?? new Date(), args.timezone);
+  const sessionIndex = localDayIndex(sessionStart, args.timezone);
+  const daysFromNow = sessionIndex - todayIndex;
+  const violations: BookingNoticeViolation[] = [];
+
+  if (
+    rules.minimumAdvanceBookingDays !== undefined &&
+    daysFromNow < rules.minimumAdvanceBookingDays
+  ) {
+    violations.push({
+      type: "minimum_advance",
+      message: `Bookings require at least ${rules.minimumAdvanceBookingDays} days notice.`,
+      limitDays: rules.minimumAdvanceBookingDays,
+      daysFromNow,
+      requiresAdditionalApproval: rules.violationMode === "Warn",
+    });
+  }
+
+  if (
+    rules.maximumAdvanceBookingDays !== undefined &&
+    daysFromNow > rules.maximumAdvanceBookingDays
+  ) {
+    violations.push({
+      type: "maximum_advance",
+      message: `Bookings cannot be made more than ${rules.maximumAdvanceBookingDays} days in advance.`,
+      limitDays: rules.maximumAdvanceBookingDays,
+      daysFromNow,
+      requiresAdditionalApproval: rules.violationMode === "Warn",
+    });
+  }
+
+  const hasViolations = violations.length > 0;
+  const canOverride = args.canOverride ?? false;
+  const blocksSubmission = hasViolations && rules.violationMode === "Block";
+  const overrideRequired = blocksSubmission && canOverride;
+  const overrideAccepted = overrideRequired && args.overrideAcknowledged === true;
+  const canSubmit = !blocksSubmission || overrideAccepted || !hasViolations;
+
+  return {
+    canSubmit,
+    requiresAdditionalApproval: hasViolations,
+    canOverride,
+    overrideRequired,
+    violations: violations.map((violation) => ({
+      ...violation,
+      requiresAdditionalApproval: true,
+    })),
+  };
+}
+
 export function formatBookingDuration(minutes: number) {
   if (minutes < 60) {
     return `${minutes} min`;
@@ -571,10 +752,7 @@ export function validateMaxBookingDuration(
   roomTypeRequests: RoomTypeRequest[],
   roomTypes: RoomTypeBookingRule[]
 ) {
-  const durationBlocks = sessionBlocksOnly(blocks);
-  const durationMinutes = bookingDurationMinutes(
-    durationBlocks.length ? durationBlocks : blocks
-  );
+  const durationMinutes = validationDurationMinutes(blocks);
 
   if (durationMinutes === null) {
     return "Booking start and end times are invalid.";
@@ -762,7 +940,7 @@ export function checkAvailabilityConflicts(
   }
 
   const durationError = validateMaxBookingDuration(
-    candidateBlocks,
+    input.blocks,
     input.roomTypeRequests,
     input.roomTypes
   );

@@ -21,6 +21,7 @@ import {
   HardDriveIcon,
   SaveIcon,
   AlertCircleIcon,
+  CalendarClockIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -150,6 +151,10 @@ export function FacilityAdmin() {
   const [notificationEmails, setNotificationEmails] = useState("");
   const [weekHours, setWeekHours] = useState<WeekHours>(DEFAULT_HOURS);
   const [uploadMaxMb, setUploadMaxMb] = useState("100");
+  const [minimumAdvanceBookingDays, setMinimumAdvanceBookingDays] = useState("");
+  const [maximumAdvanceBookingDays, setMaximumAdvanceBookingDays] = useState("");
+  const [bookingNoticeViolationMode, setBookingNoticeViolationMode] =
+    useState<"Block" | "Warn">("Block");
 
   // Initialise local state when tenant loads
   useEffect(() => {
@@ -160,6 +165,17 @@ export function FacilityAdmin() {
       setNotificationEmails(tenant.notificationEmails.join(", "));
       setWeekHours(parseHours(tenant.hoursOfOperation));
       setUploadMaxMb(String(Math.round(tenant.uploadMaxBytes / 1024 / 1024)));
+      setMinimumAdvanceBookingDays(
+        tenant.minimumAdvanceBookingDays === undefined
+          ? ""
+          : String(tenant.minimumAdvanceBookingDays)
+      );
+      setMaximumAdvanceBookingDays(
+        tenant.maximumAdvanceBookingDays === undefined
+          ? ""
+          : String(tenant.maximumAdvanceBookingDays)
+      );
+      setBookingNoticeViolationMode(tenant.bookingNoticeViolationMode ?? "Block");
     }
   }, [tenant]);
 
@@ -187,6 +203,15 @@ export function FacilityAdmin() {
         notificationEmails: parseEmails(notificationEmails),
         hoursOfOperation: serializeHours(weekHours),
         uploadMaxBytes: Number(uploadMaxMb || 100) * 1024 * 1024,
+        minimumAdvanceBookingDays:
+          minimumAdvanceBookingDays.trim() === ""
+            ? undefined
+            : Number(minimumAdvanceBookingDays),
+        maximumAdvanceBookingDays:
+          maximumAdvanceBookingDays.trim() === ""
+            ? undefined
+            : Number(maximumAdvanceBookingDays),
+        bookingNoticeViolationMode,
       });
       setHasChanges(false);
       toast.success("Facility settings saved successfully.");
@@ -300,6 +325,84 @@ export function FacilityAdmin() {
                   Separate multiple addresses with commas.
                 </p>
               </div>
+            )}
+          </AdminSettingsRow>
+        </div>
+      </AdminSettingsCard>
+
+      {/* Booking Notice */}
+      <AdminSettingsCard
+        title="Booking Notice Windows"
+        description="Control how close to today or how far into the future requester bookings may be submitted."
+        icon={<CalendarClockIcon className="size-4" />}
+      >
+        <div className="flex flex-col gap-0">
+          <AdminSettingsRow
+            label="Minimum advance notice"
+            description="Requests starting sooner than this many tenant-local calendar days will be flagged."
+          >
+            {isLoading ? (
+              <FieldSkeleton />
+            ) : (
+              <div className="flex items-center gap-2 max-w-xs">
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={minimumAdvanceBookingDays}
+                  onChange={(event) => {
+                    setMinimumAdvanceBookingDays(event.currentTarget.value);
+                    markDirty();
+                  }}
+                  placeholder="No minimum"
+                  className="w-28"
+                />
+                <span className="text-sm text-muted-foreground font-medium">days</span>
+              </div>
+            )}
+          </AdminSettingsRow>
+          <AdminSettingsRow
+            label="Maximum future booking window"
+            description="Requests starting after this many tenant-local calendar days will be flagged."
+          >
+            {isLoading ? (
+              <FieldSkeleton />
+            ) : (
+              <div className="flex items-center gap-2 max-w-xs">
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={maximumAdvanceBookingDays}
+                  onChange={(event) => {
+                    setMaximumAdvanceBookingDays(event.currentTarget.value);
+                    markDirty();
+                  }}
+                  placeholder="No maximum"
+                  className="w-28"
+                />
+                <span className="text-sm text-muted-foreground font-medium">days</span>
+              </div>
+            )}
+          </AdminSettingsRow>
+          <AdminSettingsRow
+            label="Violation handling"
+            description="Choose whether public/requester submissions outside the window are blocked or allowed as pending with warning."
+          >
+            {isLoading ? (
+              <FieldSkeleton />
+            ) : (
+              <select
+                value={bookingNoticeViolationMode}
+                onChange={(event) => {
+                  setBookingNoticeViolationMode(event.currentTarget.value as "Block" | "Warn");
+                  markDirty();
+                }}
+                className="h-9 w-full max-w-xs rounded-lg border border-input bg-background px-3 text-sm shadow-sm"
+              >
+                <option value="Block">Block submission</option>
+                <option value="Warn">Allow pending approval with warning</option>
+              </select>
             )}
           </AdminSettingsRow>
         </div>

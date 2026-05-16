@@ -73,6 +73,18 @@ export function FacilityAdmin() {
       hoursOfOperation: submitValue(form, "hoursOfOperation"),
       uploadMaxBytes:
         Number(submitValue(form, "uploadMaxMb") || 100) * 1024 * 1024,
+      minimumAdvanceBookingDays: optionalNumber(
+        form,
+        "minimumAdvanceBookingDays"
+      ),
+      maximumAdvanceBookingDays: optionalNumber(
+        form,
+        "maximumAdvanceBookingDays"
+      ),
+      bookingNoticeViolationMode:
+        submitValue(form, "bookingNoticeViolationMode") === "Warn"
+          ? "Warn"
+          : "Block",
     });
 
     setStatus("Facility settings saved.");
@@ -144,6 +156,46 @@ export function FacilityAdmin() {
                 defaultValue={Math.round(tenant.uploadMaxBytes / 1024 / 1024)}
                 className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
               />
+            </label>
+
+            <label>
+              <span className="text-sm font-semibold text-foreground">
+                Minimum advance notice (days)
+              </span>
+              <input
+                name="minimumAdvanceBookingDays"
+                type="number"
+                min="0"
+                defaultValue={tenant.minimumAdvanceBookingDays ?? ""}
+                className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
+              />
+            </label>
+
+            <label>
+              <span className="text-sm font-semibold text-foreground">
+                Maximum future booking window (days)
+              </span>
+              <input
+                name="maximumAdvanceBookingDays"
+                type="number"
+                min="0"
+                defaultValue={tenant.maximumAdvanceBookingDays ?? ""}
+                className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
+              />
+            </label>
+
+            <label className="md:col-span-2">
+              <span className="text-sm font-semibold text-foreground">
+                Notice violation handling
+              </span>
+              <select
+                name="bookingNoticeViolationMode"
+                defaultValue={tenant.bookingNoticeViolationMode ?? "Block"}
+                className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
+              >
+                <option value="Block">Block submission</option>
+                <option value="Warn">Allow pending approval with warning</option>
+              </select>
             </label>
 
             <div className="flex items-center gap-3 md:col-span-2">

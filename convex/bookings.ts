@@ -3,19 +3,28 @@ import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { authContextValidator, requireStaff, requireTenantAccess, tenantBySlug } from "./authz";
+import {
+  authContextValidator,
+  requireStaff,
+  requireTenantAccess,
+  tenantBySlug,
+  type ConvexAuthContext,
+} from "./authz";
 import {
   allocateRoomsByType,
   checkAvailabilityConflicts,
+  evaluateBookingNoticeWindow,
   hasBookingConflict,
   bookingBlocksFromSessionWindow,
   roomTypeBufferMinutes,
+  sessionBookingRange,
   validateBookingBlocks,
   validateBookingWithinStaffHours,
   validateSessionWithinOpeningHours,
   validateRoomSelectionState,
   validateMaxBookingDuration,
   type AvailabilityCheckResult,
+  type BookingNoticeEvaluation,
 } from "../src/lib/booking-logic";
 import { campusIsActive } from "../src/lib/campus";
 
@@ -240,6 +249,67 @@ function publicRoomType(roomType: Doc<"roomTypes">) {
         : undefined),
     standardSetupMinutes: roomType.standardSetupMinutes ?? 30,
     standardCleanupMinutes: roomType.standardCleanupMinutes ?? 30,
+  };
+}
+
+function tenantBookingNoticeRules(tenant: Doc<"tenants">) {
+  return {
+    minimumAdvanceBookingDays: tenant.minimumAdvanceBookingDays,
+    maximumAdvanceBookingDays: tenant.maximumAdvanceBookingDays,
+    violationMode: tenant.bookingNoticeViolationMode ?? "Block",
+  };
+}
+
+function authCanOverrideBookingNotice(role?: string) {
+  return role === "Developer" || role === "Admin" || role === "Staff";
+}
+
+async function verifiedBookingNoticeOverrideRole(
+  ctx: QueryCtx | MutationCtx,
+  tenantSlug: string,
+  auth?: ConvexAuthContext
+) {
+  if (!authCanOverrideBookingNotice(auth?.role)) {
+    return undefined;
+  }
+
+  try {
+    const { user } = await requireStaff(ctx, tenantSlug, auth);
+    return authCanOverrideBookingNotice(user?.role) ? user?.role : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function availabilityWithNoticeEvaluation(
+  availability: AvailabilityCheckResult,
+  notice: BookingNoticeEvaluation
+): AvailabilityCheckResult {
+  if (notice.violations.length === 0) {
+    return availability;
+  }
+
+  const noticeConflicts = notice.violations.map((violation) => ({
+    type: "booking_notice" as const,
+    severity: notice.canSubmit ? ("warning" as const) : ("likely_unavailable" as const),
+    message: notice.canSubmit
+      ? `${violation.message} Your request will require additional approval.`
+      : violation.message,
+  }));
+  const conflicts = [...availability.conflicts, ...noticeConflicts];
+  const highestSeverity =
+    notice.canSubmit && availability.highestSeverity !== "likely_unavailable"
+      ? availability.highestSeverity ?? "warning"
+      : "likely_unavailable";
+
+  return {
+    ...availability,
+    canSubmit: availability.canSubmit && notice.canSubmit,
+    highestSeverity,
+    summary: notice.canSubmit
+      ? "This request will require additional approval."
+      : notice.violations[0]?.message ?? availability.summary,
+    conflicts,
   };
 }
 
@@ -787,6 +857,8 @@ export const dashboardSummary = query({
 export const checkRequestAvailability = query({
   args: {
     tenantSlug: v.string(),
+    auth: v.optional(authContextValidator),
+    overrideAcknowledged: v.optional(v.boolean()),
     roomSelectionMode: v.optional(v.union(v.literal("SpecificRooms"), v.literal("RoomTypeQuantity"))),
     blocks: v.array(v.object({ start: v.string(), end: v.string() })),
     roomTypeRequests: v.array(v.object({ roomTypeId: v.id("roomTypes"), quantity: v.number() })),
@@ -821,18 +893,36 @@ export const checkRequestAvailability = query({
       })),
     });
 
-    return await computeAvailability(ctx, tenant._id, {
+    const availability = await computeAvailability(ctx, tenant._id, {
       blocks,
       roomTypeRequests: args.roomTypeRequests,
       requestedRoomIds: args.requestedRoomIds,
       roomSelectionMode: args.roomSelectionMode ?? "RoomTypeQuantity",
     });
+    const session = sessionBookingRange(blocks);
+    const overrideRole = await verifiedBookingNoticeOverrideRole(
+      ctx,
+      args.tenantSlug,
+      args.auth
+    );
+    const notice = evaluateBookingNoticeWindow({
+      sessionStart: session?.start ?? "",
+      rules: tenantBookingNoticeRules(tenant),
+      timezone: tenant.timezone,
+      canOverride: overrideRole !== undefined,
+      overrideAcknowledged: args.overrideAcknowledged,
+    });
+
+    return availabilityWithNoticeEvaluation(availability, notice);
   },
 });
 
 export const createRequest = mutation({
   args: {
     tenantSlug: v.string(),
+    auth: v.optional(authContextValidator),
+    overrideAcknowledged: v.optional(v.boolean()),
+    overrideReason: v.optional(v.string()),
     roomSelectionMode: v.union(v.literal("SpecificRooms"), v.literal("RoomTypeQuantity")),
     requestedRoomIds: v.optional(v.array(v.id("rooms"))),
     requesterName: v.string(),
@@ -901,14 +991,40 @@ export const createRequest = mutation({
       throw new Error(staffHoursError);
     }
 
+    const overrideRole = await verifiedBookingNoticeOverrideRole(
+      ctx,
+      args.tenantSlug,
+      args.auth
+    );
+    const canOverrideNotice = overrideRole !== undefined;
+    const noticeEvaluation = evaluateBookingNoticeWindow({
+      sessionStart: sessionBookingRange(blocks)?.start ?? "",
+      rules: tenantBookingNoticeRules(tenant),
+      timezone: tenant.timezone,
+      canOverride: canOverrideNotice,
+      overrideAcknowledged: args.overrideAcknowledged,
+    });
+
+    if (!noticeEvaluation.canSubmit) {
+      throw new Error(
+        noticeEvaluation.canOverride
+          ? `${noticeEvaluation.violations[0]?.message ?? "Booking notice limits were exceeded."} Acknowledgement is required to override.`
+          : noticeEvaluation.violations[0]?.message ?? "Booking notice limits were exceeded."
+      );
+    }
+
     await validateCustomInputs(ctx, tenant._id, args.customInputs);
 
-    const conflictMetadata = await computeAvailability(ctx, tenant._id, {
+    const availability = await computeAvailability(ctx, tenant._id, {
       roomSelectionMode: args.roomSelectionMode,
       blocks,
       roomTypeRequests: args.roomTypeRequests,
       requestedRoomIds: args.requestedRoomIds,
     });
+    const conflictMetadata = availabilityWithNoticeEvaluation(
+      availability,
+      noticeEvaluation
+    );
 
     if (!conflictMetadata.canSubmit) {
       throw new Error(conflictMetadata.conflicts[0]?.message ?? conflictMetadata.summary);
@@ -937,6 +1053,22 @@ export const createRequest = mutation({
       tenantId: tenant._id,
       assignedRoomIds: [],
       conflictMetadata,
+      bookingNoticeMetadata: noticeEvaluation.violations.length
+        ? {
+            rules: tenantBookingNoticeRules(tenant),
+            canOverride: canOverrideNotice,
+            overrideAcknowledged: args.overrideAcknowledged === true,
+            overrideReason: args.overrideReason?.trim() || undefined,
+            overriddenByRole:
+              canOverrideNotice && args.overrideAcknowledged === true
+                ? overrideRole
+                : undefined,
+            requiresAdditionalApproval:
+              noticeEvaluation.requiresAdditionalApproval,
+            violations: noticeEvaluation.violations,
+            evaluatedAt: now,
+          }
+        : undefined,
       status: "Pending",
       createdAt: now,
       updatedAt: now,
@@ -952,6 +1084,9 @@ export const createRequest = mutation({
         conflictMetadata.conflicts.length
           ? `Availability warnings: ${conflictMetadata.conflicts.length}`
           : "Availability warnings: none",
+        noticeEvaluation.violations.length
+          ? `Booking notice: ${noticeEvaluation.violations.map((violation) => violation.message).join(" ")}`
+          : "Booking notice: clear",
       ].join(" | "),
       seen: false,
       createdAt: now,

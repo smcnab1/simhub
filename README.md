@@ -162,6 +162,21 @@ control the requester-entered session start/finish. Staff hours control whether
 the derived setup and cleanup can fit around that session. The default is public
 09:00-17:00 and staff 08:30-17:30.
 
+Booking notice windows are tenant settings on `tenants`:
+`minimumAdvanceBookingDays`, `maximumAdvanceBookingDays`, and
+`bookingNoticeViolationMode`. Notice checks compare the session start date
+against today's date in the tenant timezone. Public/requester submissions are
+blocked when the mode is `Block`; in `Warn` mode they can submit as Pending and
+the request is marked as requiring additional approval. Staff, Admin, and
+Developer roles can acknowledge an override when the booking UI is used with
+dashboard auth, and the request stores `bookingNoticeMetadata` for admin review.
+
+Duration calculations are intentionally split. Occupancy/reservation uses the
+full setup-through-cleanup window for room availability. Session duration uses
+only the `Session` block for requester-visible session length. Validation
+duration also uses the `Session` block, so room type maximum duration rules do
+not count setup or cleanup buffers.
+
 Guest ownership is email-based. `requesterEmail` is normalized and stored on
 the request. If a matching tenant user already exists, `requesterUserId` is set
 at submission time. Signed-in requester views can use `bookings.listMyRequests`,

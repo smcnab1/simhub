@@ -12,6 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { formFieldClass, primaryButtonClass } from "@/components/ui";
 import { formatBlockTime, formatRooms } from "@/lib/format";
 import { TENANT_SLUG } from "@/lib/config";
+import {
+  formatBookingDuration,
+  occupancyDurationMinutes,
+  sessionDurationMinutes,
+} from "@/lib/booking-logic";
 
 function severityLabel(severity: string) {
   return severity === "likely_unavailable"
@@ -84,6 +89,9 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
   if (request === undefined) return <p className="rounded-2xl border border-border bg-card/80 p-5 text-sm text-muted-foreground">Loading request...</p>;
   if (!request) return <p className="rounded-2xl border border-dashed border-border bg-card/80 p-5 text-sm text-muted-foreground">Request not found.</p>;
 
+  const sessionLength = sessionDurationMinutes(request.blocks);
+  const occupancyLength = occupancyDurationMinutes(request.blocks);
+
   return (
     <>
       <SectionHeader eyebrow={publicView ? "Requester tracking" : request._id} title={request.sessionName} action={<StatusPill status={request.status} />} />
@@ -99,6 +107,8 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
               <div><dt className="text-sm text-muted-foreground">Email</dt><dd className="font-medium">{request.requesterEmail}</dd></div>
               <div><dt className="text-sm text-muted-foreground">Phone</dt><dd className="font-medium">{request.requesterPhone || "Not provided"}</dd></div>
               <div><dt className="text-sm text-muted-foreground">CC</dt><dd className="font-medium">{request.ccEmails.length ? request.ccEmails.join(", ") : "None"}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Session length</dt><dd className="font-medium">{sessionLength !== null ? formatBookingDuration(sessionLength) : "Invalid"}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Reserved room time</dt><dd className="font-medium">{occupancyLength !== null ? formatBookingDuration(occupancyLength) : "Invalid"}</dd></div>
             </dl>
             <div className="mt-4 grid gap-2">
               {request.requestedRooms?.length ? (
@@ -151,6 +161,35 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
           </Card>
         </div>
         <div className="grid content-start gap-5">
+          {!publicView ? (
+            request.bookingNoticeMetadata?.violations.length ? (
+              <Card>
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="font-semibold">Booking notice review</h2>
+                  <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                    Additional approval
+                  </Badge>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {request.bookingNoticeMetadata.violations.map((violation) => (
+                    <p key={violation.type} className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                      {violation.message}
+                    </p>
+                  ))}
+                </div>
+                <div className="mt-3 grid gap-1 text-sm text-muted-foreground">
+                  <p>Policy mode: <span className="font-medium text-foreground">{request.bookingNoticeMetadata.rules.violationMode}</span></p>
+                  <p>Override acknowledged: <span className="font-medium text-foreground">{request.bookingNoticeMetadata.overrideAcknowledged ? "Yes" : "No"}</span></p>
+                  {request.bookingNoticeMetadata.overriddenByRole ? (
+                    <p>Overridden by role: <span className="font-medium text-foreground">{request.bookingNoticeMetadata.overriddenByRole}</span></p>
+                  ) : null}
+                  {request.bookingNoticeMetadata.overrideReason ? (
+                    <p>Override reason: <span className="font-medium text-foreground">{request.bookingNoticeMetadata.overrideReason}</span></p>
+                  ) : null}
+                </div>
+              </Card>
+            ) : null
+          ) : null}
           {!publicView ? (
             <Card>
               <h2 className="font-semibold">Workflow actions</h2>
