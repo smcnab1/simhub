@@ -70,6 +70,8 @@ export function FacilityAdmin() {
       name: submitValue(form, "name"),
       contactEmail: submitValue(form, "contactEmail"),
       notificationEmails: parseEmails(submitValue(form, "notificationEmails")),
+      notificationEmailsEnabled:
+        new FormData(form).get("notificationEmailsEnabled") === "on",
       hoursOfOperation: submitValue(form, "hoursOfOperation"),
       uploadMaxBytes:
         Number(submitValue(form, "uploadMaxMb") || 100) * 1024 * 1024,
@@ -131,6 +133,17 @@ export function FacilityAdmin() {
                 defaultValue={tenant.notificationEmails.join(", ")}
                 className="mt-1 w-full rounded-xl border border-border bg-card/90 px-3 py-2 shadow-sm"
               />
+            </label>
+
+            <label className="flex items-center gap-2 md:col-span-2">
+              <input
+                name="notificationEmailsEnabled"
+                type="checkbox"
+                defaultChecked={tenant.notificationEmailsEnabled ?? true}
+              />
+              <span className="text-sm font-semibold text-foreground">
+                Send emails to notification recipients
+              </span>
             </label>
 
             <label>

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
@@ -129,6 +129,220 @@ function formatRequestWindow(blocks: Array<{ start: string; end: string }>, time
   }
 
   return `${formatDateTimeForNotification(new Date(earliestStart).toISOString(), timezone)} to ${formatTimeForNotification(new Date(latestEnd).toISOString(), timezone)}`;
+}
+
+function bookingContactEmails(request: Doc<"bookingRequests">) {
+  return Array.from(
+    new Set([request.requesterEmail, ...request.ccEmails].map(normalizeEmail))
+  );
+}
+
+async function emailBookingPayload(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<"bookingRequests">,
+) {
+  const [requestedRooms, roomTypeRequestDetails] = await Promise.all([
+    Promise.all(
+      (request.requestedRoomIds ?? []).map((roomId) => ctx.db.get(roomId))
+    ),
+    Promise.all(
+      request.roomTypeRequests.map(async (roomTypeRequest) => {
+        const roomType = await ctx.db.get(roomTypeRequest.roomTypeId);
+
+        return {
+          quantity: roomTypeRequest.quantity,
+          roomTypeName: roomType?.name ?? "Unknown room type",
+        };
+      })
+    ),
+  ]);
+
+  return {
+    id: String(request._id),
+    sessionName: request.sessionName,
+    timezone: request.timezone,
+    blocks: request.blocks,
+    requestedRooms: requestedRooms
+      .filter((room): room is Doc<"rooms"> => room !== null)
+      .map((room) => ({
+        name: room.name,
+        code: room.code,
+      })),
+    roomTypeRequests: roomTypeRequestDetails,
+  };
+}
+
+async function scheduleNewRequestEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+    to: string[];
+  }
+) {
+  try {
+    await ctx.scheduler.runAfter(0, internal.email.sendNewRequestEmail, {
+      tenantName: args.tenant.name,
+      to: args.to,
+      booking: await emailBookingPayload(ctx, args.request),
+    });
+  } catch (error) {
+    console.error("[email] failed to schedule new request email", {
+      error,
+      requestId: String(args.request._id),
+      tenantId: String(args.tenant._id),
+    });
+  }
+}
+
+async function scheduleAdminNewRequestEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+  }
+) {
+  if (args.tenant.notificationEmailsEnabled === false) {
+    return;
+  }
+
+  await scheduleNewRequestEmail(ctx, {
+    tenant: args.tenant,
+    request: args.request,
+    to: args.tenant.notificationEmails,
+  });
+}
+
+async function scheduleStatusUpdateEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+    status: Doc<"bookingRequests">["status"];
+    reason?: string;
+  }
+) {
+  try {
+    await ctx.scheduler.runAfter(0, internal.email.sendStatusUpdateEmail, {
+      to: bookingContactEmails(args.request),
+      tenantName: args.tenant.name,
+      booking: await emailBookingPayload(ctx, args.request),
+      status: args.status,
+      reason: args.reason,
+    });
+  } catch (error) {
+    console.error("[email] failed to schedule status update email", {
+      error,
+      requestId: String(args.request._id),
+      tenantId: String(args.tenant._id),
+      status: args.status,
+    });
+  }
+}
+
+async function scheduleCommentAddedEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+  }
+) {
+  try {
+    await ctx.scheduler.runAfter(0, internal.email.sendCommentAddedEmail, {
+      to: bookingContactEmails(args.request),
+      tenantName: args.tenant.name,
+      booking: await emailBookingPayload(ctx, args.request),
+    });
+  } catch (error) {
+    console.error("[email] failed to schedule comment email", {
+      error,
+      requestId: String(args.request._id),
+      tenantId: String(args.tenant._id),
+    });
+  }
+}
+
+async function scheduleBookingUpdatedEmail(
+  ctx: MutationCtx,
+  args: {
+    tenant: Doc<"tenants">;
+    request: Doc<"bookingRequests">;
+    changeSummary: string;
+  }
+) {
+  try {
+    await ctx.scheduler.runAfter(0, internal.email.sendBookingUpdatedEmail, {
+      to: bookingContactEmails(args.request),
+      tenantName: args.tenant.name,
+      booking: await emailBookingPayload(ctx, args.request),
+      changeSummary: args.changeSummary,
+    });
+  } catch (error) {
+    console.error("[email] failed to schedule booking update email", {
+      error,
+      requestId: String(args.request._id),
+      tenantId: String(args.tenant._id),
+    });
+  }
+}
+
+type NotificationType =
+  | "NewRequest"
+  | "BookingUpdated"
+  | "StatusChanged"
+  | "AllocationChanged"
+  | "CommentAdded";
+
+async function createStaffNotification(
+  ctx: MutationCtx,
+  args: {
+    tenantId: Id<"tenants">;
+    requestId: Id<"bookingRequests">;
+    type: NotificationType;
+    title: string;
+    message: string;
+    createdAt: number;
+  }
+) {
+  await ctx.db.insert("notifications", {
+    tenantId: args.tenantId,
+    requestId: args.requestId,
+    type: args.type,
+    title: args.title,
+    message: args.message,
+    targetRoles: ["Developer", "Admin", "Staff"],
+    seen: false,
+    createdAt: args.createdAt,
+  });
+}
+
+async function createRequesterNotification(
+  ctx: MutationCtx,
+  args: {
+    request: Doc<"bookingRequests">;
+    type: NotificationType;
+    title: string;
+    message: string;
+    createdAt: number;
+  }
+) {
+  const targetEmails = bookingContactEmails(args.request);
+
+  if (targetEmails.length === 0 && !args.request.requesterUserId) {
+    return;
+  }
+
+  await ctx.db.insert("notifications", {
+    tenantId: args.request.tenantId,
+    requestId: args.request._id,
+    userId: args.request.requesterUserId,
+    targetEmails,
+    type: args.type,
+    title: args.title,
+    message: args.message,
+    seen: false,
+    createdAt: args.createdAt,
+  });
 }
 
 async function requesterUserByEmail(
@@ -867,13 +1081,27 @@ export const getRequest = query({
   handler: async (ctx, args) => {
     const request = await ctx.db.get(args.requestId);
     if (!request) return null;
+    let isStaff = false;
     if (args.tenantSlug) {
-      const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth ?? {});
+      const { tenant, user, identity } = await requireTenantAccess(ctx, args.tenantSlug, args.auth ?? {});
       if (request.tenantId !== tenant._id) throw new Error("Request not found");
+      isStaff = user.role === "Developer" || user.role === "Admin" || user.role === "Staff";
+
+      if (!isStaff) {
+        const requesterEmail = normalizeEmail(identity.email ?? user.email);
+        const canSeeOwnRequest =
+          request.requesterUserId === user._id ||
+          normalizeEmail(request.requesterEmail) === requesterEmail ||
+          request.ccEmails.some((email) => normalizeEmail(email) === requesterEmail);
+
+        if (!canSeeOwnRequest) {
+          throw new Error("Request not found");
+        }
+      }
     }
     const withRooms = await withAssignedRooms(ctx, request);
     const comments = await ctx.db.query("comments").withIndex("by_request", (q) => q.eq("requestId", args.requestId)).collect();
-    const conflictMetadata = args.tenantSlug
+    const conflictMetadata = args.tenantSlug && isStaff
       ? await computeAvailability(ctx, request.tenantId, {
           blocks: request.blocks,
           roomTypeRequests: request.roomTypeRequests,
@@ -890,7 +1118,7 @@ export const getRequest = query({
     return {
       ...withRooms,
       conflictMetadata,
-      comments: args.tenantSlug ? comments : comments.filter((comment) => !comment.internal),
+      comments: isStaff ? comments : comments.filter((comment) => !comment.internal),
     };
   },
 });
@@ -980,7 +1208,7 @@ export const listMyRequests = query({
 export const dashboardSummary = query({
   args: { tenantSlug: v.string(), auth: authContextValidator },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
+    const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const [pending, approved, unseen, blockedTimes] = await Promise.all([
       ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", tenant._id).eq("status", "Pending")).collect(),
       ctx.db.query("bookingRequests").withIndex("by_tenant_status", (q) => q.eq("tenantId", tenant._id).eq("status", "Approved")).collect(),
@@ -995,8 +1223,28 @@ export const dashboardSummary = query({
       const blockEnd = new Date(bt.end).getTime();
       return blockEnd > now;
     }).length;
+    const visibleUnseenCount = unseen.filter((notification) => {
+      if (notification.userId && notification.userId !== user._id) {
+        return false;
+      }
+
+      if (notification.targetRoles?.length) {
+        return notification.targetRoles.includes(
+          user.role as "Developer" | "Admin" | "Staff"
+        );
+      }
+
+      if (notification.targetEmails?.length) {
+        const userEmails = new Set([normalizeEmail(user.email), normalizeEmail(args.auth.email ?? "")]);
+        return notification.targetEmails.some((email) =>
+          userEmails.has(normalizeEmail(email))
+        );
+      }
+
+      return true;
+    }).length;
     
-    return { pending: pending.length, approved: approved.length, unseen: unseen.length, conflicts: activeBlockedCount };
+    return { pending: pending.length, approved: approved.length, unseen: visibleUnseenCount, conflicts: activeBlockedCount };
   },
 });
 
@@ -1264,25 +1512,33 @@ export const createRequest = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    await ctx.db.insert("notifications", {
+    await createStaffNotification(ctx, {
       tenantId: tenant._id,
       requestId,
-      message: [
-        `New pending request: ${args.sessionName.trim()}`,
-        `Requester: ${args.requesterName.trim()} <${normalizedRequesterEmail}>`,
-        `When: ${formatRequestWindow(blocks, tenant.timezone)}`,
-        `Reference: ${requestId}`,
-        `Allocation: ${allocation.status}`,
-        finalConflictMetadata.conflicts.length
-          ? `Availability warnings: ${finalConflictMetadata.conflicts.length}`
-          : "Availability warnings: none",
-        noticeEvaluation.violations.length
-          ? `Booking notice: ${noticeEvaluation.violations.map((violation) => violation.message).join(" ")}`
-          : "Booking notice: clear",
-      ].join(" | "),
-      seen: false,
+      type: "NewRequest",
+      title: "New booking request",
+      message: `${args.sessionName.trim()} is waiting for staff review on ${formatRequestWindow(blocks, tenant.timezone)}.`,
       createdAt: now,
     });
+    const createdRequest = await ctx.db.get(requestId);
+    if (createdRequest) {
+      await createRequesterNotification(ctx, {
+        request: createdRequest,
+        type: "NewRequest",
+        title: "Booking request submitted",
+        message: `${createdRequest.sessionName} was submitted and is waiting for staff review.`,
+        createdAt: now,
+      });
+      await scheduleNewRequestEmail(ctx, {
+        tenant,
+        request: createdRequest,
+        to: bookingContactEmails(createdRequest),
+      });
+      await scheduleAdminNewRequestEmail(ctx, {
+        tenant,
+        request: createdRequest,
+      });
+    }
     await recordAuditEvent(ctx, {
       eventType: "booking.created",
       entityType: "booking",
@@ -1429,6 +1685,27 @@ export const updateStatus = mutation({
     };
 
     await ctx.db.patch(args.requestId, patch);
+    await createStaffNotification(ctx, {
+      tenantId: tenant._id,
+      requestId: args.requestId,
+      type: "StatusChanged",
+      title: "Booking status changed",
+      message: `${request.sessionName} changed from ${request.status} to ${args.status}.`,
+      createdAt: now,
+    });
+    await createRequesterNotification(ctx, {
+      request,
+      type: "StatusChanged",
+      title: "Booking status updated",
+      message: `${request.sessionName} is now ${args.status}.`,
+      createdAt: now,
+    });
+    await scheduleStatusUpdateEmail(ctx, {
+      tenant,
+      request,
+      status: args.status,
+      reason,
+    });
     await recordAuditEvent(ctx, {
       eventType: statusEventType(args.status),
       entityType: "booking",
@@ -1464,6 +1741,21 @@ export const updateStatus = mutation({
       ),
     });
     if (args.assignedRoomIds !== undefined) {
+      await createStaffNotification(ctx, {
+        tenantId: tenant._id,
+        requestId: args.requestId,
+        type: "AllocationChanged",
+        title: "Room allocation changed",
+        message: `${request.sessionName} room allocation was adjusted during status update.`,
+        createdAt: now,
+      });
+      await createRequesterNotification(ctx, {
+        request,
+        type: "AllocationChanged",
+        title: "Booking rooms updated",
+        message: `${request.sessionName} room allocation was updated.`,
+        createdAt: now,
+      });
       await recordAuditEvent(ctx, {
         eventType: "booking.allocation_override",
         entityType: "booking",
@@ -1521,6 +1813,26 @@ export const updateAllocation = mutation({
       allocationUpdatedAt: now,
       conflictMetadata,
       updatedAt: now,
+    });
+    await createStaffNotification(ctx, {
+      tenantId: tenant._id,
+      requestId: args.requestId,
+      type: "AllocationChanged",
+      title: "Room allocation changed",
+      message: `${request.sessionName} room allocation was updated.`,
+      createdAt: now,
+    });
+    await createRequesterNotification(ctx, {
+      request,
+      type: "AllocationChanged",
+      title: "Booking rooms updated",
+      message: `${request.sessionName} room allocation was updated.`,
+      createdAt: now,
+    });
+    await scheduleBookingUpdatedEmail(ctx, {
+      tenant,
+      request,
+      changeSummary: "The room allocation for this booking request was updated.",
     });
     await recordAuditEvent(ctx, {
       eventType: "booking.allocation_changed",
@@ -1596,6 +1908,27 @@ export const addComment = mutation({
       internal: args.internal,
       createdAt: now,
     });
+    await createStaffNotification(ctx, {
+      tenantId: tenant._id,
+      requestId: args.requestId,
+      type: "CommentAdded",
+      title: args.internal ? "Internal comment added" : "Booking comment added",
+      message: `${request.sessionName} has a new ${args.internal ? "internal " : ""}comment.`,
+      createdAt: now,
+    });
+    if (!args.internal) {
+      await createRequesterNotification(ctx, {
+        request,
+        type: "CommentAdded",
+        title: "New booking comment",
+        message: `${request.sessionName} has a new comment.`,
+        createdAt: now,
+      });
+      await scheduleCommentAddedEmail(ctx, {
+        tenant,
+        request,
+      });
+    }
     await recordAuditEvent(ctx, {
       eventType: "booking.comment_added",
       entityType: "comment",

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import {
   Collapsible,
   CollapsibleContent,
@@ -13,6 +13,7 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuAction,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -28,20 +29,26 @@ function isItemActive(item: NavigationItem, pathname: string): boolean {
   return item.items?.some((child) => isItemActive(child, pathname)) ?? false
 }
 
-function NavItem({ item, pathname }: { item: NavigationItem; pathname: string }) {
+function NavItem({
+  item,
+  pathname,
+  notificationUnseenCount,
+}: {
+  item: NavigationItem;
+  pathname: string;
+  notificationUnseenCount?: number;
+}) {
   const Icon = item.icon
   const isActive = isItemActive(item, pathname)
-  const [open, setOpen] = useState(isActive)
-
-  // Auto-expand when navigating to a child route
-  useEffect(() => {
-    if (isActive && !open) {
-      setOpen(true)
-    }
-  }, [isActive, open])
+  const [open, setOpen] = useState(false)
+  const isOpen = open || isActive
+  const notificationBadge =
+    item.url === "/dashboard/notifications" && notificationUnseenCount
+      ? notificationUnseenCount
+      : 0
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+    <Collapsible open={isOpen} onOpenChange={setOpen} render={<SidebarMenuItem />}>
       <SidebarMenuButton
         tooltip={item.title}
         isActive={isActive}
@@ -50,6 +57,11 @@ function NavItem({ item, pathname }: { item: NavigationItem; pathname: string })
         {Icon ? <Icon /> : null}
         <span>{item.title}</span>
       </SidebarMenuButton>
+      {notificationBadge > 0 ? (
+        <SidebarMenuBadge aria-label={`${notificationBadge} unseen notifications`}>
+          {notificationBadge > 99 ? "99+" : notificationBadge}
+        </SidebarMenuBadge>
+      ) : null}
       {item.items?.length ? (
         <>
           <CollapsibleTrigger
@@ -82,8 +94,10 @@ function NavItem({ item, pathname }: { item: NavigationItem; pathname: string })
 
 export function NavMain({
   groups,
+  notificationUnseenCount,
 }: {
   groups: NavigationGroup[]
+  notificationUnseenCount?: number
 }) {
   const pathname = usePathname()
 
@@ -94,7 +108,12 @@ export function NavMain({
           <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
           <SidebarMenu>
             {group.items.map((item) => (
-              <NavItem key={item.title} item={item} pathname={pathname} />
+              <NavItem
+                key={item.title}
+                item={item}
+                pathname={pathname}
+                notificationUnseenCount={notificationUnseenCount}
+              />
             ))}
           </SidebarMenu>
         </SidebarGroup>

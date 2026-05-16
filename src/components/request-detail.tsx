@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -870,6 +871,119 @@ function ActivityTimelineCard({
   );
 }
 
+function SubmissionConfirmation({
+  request,
+  contactEmail,
+  isLoggedIn,
+}: {
+  request: {
+    _id: string;
+    status: string;
+    sessionName: string;
+    requesterEmail: string;
+    timezone?: string;
+    blocks: Array<{ label?: string; start: string; end: string }>;
+    roomSelectionMode?: "SpecificRooms" | "RoomTypeQuantity";
+    assignedRooms?: Array<{ name: string; code?: string }>;
+    requestedRooms?: Array<{ name: string; code?: string }>;
+    roomTypeRequestDetails?: Array<{ roomTypeName: string; quantity: number }>;
+    roomTypeRequests?: Array<{ quantity: number }>;
+  };
+  contactEmail: string;
+  isLoggedIn: boolean;
+}) {
+  const sessionBlock = request.blocks.find((block) => block.label === "Session") ?? request.blocks[0];
+  const roomSummary = formatRooms({
+    roomSelectionMode: request.roomSelectionMode,
+    requestedRooms: request.requestedRooms,
+    roomTypeRequestDetails: request.roomTypeRequestDetails,
+    roomTypeRequests: request.roomTypeRequests,
+  });
+
+  return (
+    <div className="mx-auto grid max-w-3xl gap-5">
+      <Card className="border-primary/25 bg-primary/5">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="mt-0.5 size-6 shrink-0 text-primary" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                Request received
+              </p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-foreground">
+                Your request has been submitted.
+              </h1>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This request is pending review and is not yet approved. Staff will review the details before confirming whether the booking can go ahead.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="border-b pb-3">
+          <CardTitle className="text-sm font-semibold">Submission details</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs font-medium text-muted-foreground">Reference ID</dt>
+              <dd className="mt-1 break-all font-mono text-sm text-foreground">{request._id}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-muted-foreground">Status</dt>
+              <dd className="mt-1"><StatusBadge status={request.status} /></dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-muted-foreground">Session</dt>
+              <dd className="mt-1 text-sm font-medium text-foreground">{request.sessionName}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-muted-foreground">Session date/time</dt>
+              <dd className="mt-1 text-sm text-foreground">
+                {sessionBlock ? formatBlockTime(sessionBlock, request.timezone) : "Not provided"}
+              </dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-medium text-muted-foreground">Requested rooms</dt>
+              <dd className="mt-1 text-sm text-foreground">{roomSummary}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="grid gap-3 pt-4 text-sm text-muted-foreground">
+          <p>
+            Need to change anything? Contact{" "}
+            <a className="font-medium text-primary hover:underline" href={`mailto:${contactEmail}`}>
+              {contactEmail}
+            </a>
+            .
+          </p>
+          <p>
+            To view bookings linked to this email address, create an account using the same email you used for this request.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {isLoggedIn ? (
+              <Link href="/dashboard" className={primaryButtonClass}>
+                View my bookings
+              </Link>
+            ) : null}
+            <Link href={`/requests/${request._id}?email=${encodeURIComponent(request.requesterEmail)}`} className={primaryButtonClass}>
+              Open tracking page
+            </Link>
+            <Link href={`/auth/sign-in?returnTo=${encodeURIComponent("/dashboard")}`} className="inline-flex items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50">
+              Sign in or create account
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main RequestDetail component
 // ---------------------------------------------------------------------------
@@ -884,6 +998,7 @@ export function RequestDetail({
   const auth = useOptionalDashboardAuth();
   const searchParams = useSearchParams();
   const emailFromUrl = searchParams.get("email")?.trim() ?? "";
+  const isSubmissionConfirmation = publicView && searchParams.get("submitted") === "1";
   const tenantSlug = auth?.tenantSlug ?? "";
 
   // Role-based access
@@ -894,6 +1009,7 @@ export function RequestDetail({
 
   const updateStatus = useMutation(api.bookings.updateStatus);
   const addComment = useMutation(api.bookings.addComment);
+  const tenant = useQuery(api.tenants.getBySlug, { slug: TENANT_SLUG });
 
   const [statusBusy, setStatusBusy] = useState(false);
   const [commentBusy, setCommentBusy] = useState(false);
@@ -1149,6 +1265,16 @@ export function RequestDetail({
   const sessionBlock = request.blocks.find(
     (b: { label?: string }) => b.label === "Session"
   ) ?? request.blocks[0];
+
+  if (isSubmissionConfirmation) {
+    return (
+      <SubmissionConfirmation
+        request={request}
+        contactEmail={tenant?.contactEmail ?? "simulation@example.edu"}
+        isLoggedIn={Boolean(auth)}
+      />
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Page render

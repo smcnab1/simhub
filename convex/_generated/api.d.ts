@@ -13,6 +13,7 @@ import type * as authz from "../authz.js";
 import type * as blockedTimes from "../blockedTimes.js";
 import type * as bookings from "../bookings.js";
 import type * as bootstrap from "../bootstrap.js";
+import type * as email from "../email.js";
 import type * as files from "../files.js";
 import type * as notifications from "../notifications.js";
 import type * as tenants from "../tenants.js";
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   blockedTimes: typeof blockedTimes;
   bookings: typeof bookings;
   bootstrap: typeof bootstrap;
+  email: typeof email;
   files: typeof files;
   notifications: typeof notifications;
   tenants: typeof tenants;

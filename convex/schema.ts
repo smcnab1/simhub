@@ -8,6 +8,7 @@ export default defineSchema({
     timezone: v.string(),
     contactEmail: v.string(),
     notificationEmails: v.array(v.string()),
+    notificationEmailsEnabled: v.optional(v.boolean()),
     hoursOfOperation: v.string(),
     logoStorageId: v.optional(v.id("_storage")),
     uploadMaxBytes: v.number(),
@@ -378,8 +379,29 @@ export default defineSchema({
     tenantId: v.id("tenants"),
     userId: v.optional(v.id("users")),
     requestId: v.optional(v.id("bookingRequests")),
+    type: v.optional(
+      v.union(
+        v.literal("NewRequest"),
+        v.literal("BookingUpdated"),
+        v.literal("StatusChanged"),
+        v.literal("AllocationChanged"),
+        v.literal("CommentAdded")
+      )
+    ),
+    title: v.optional(v.string()),
     message: v.string(),
+    targetRoles: v.optional(
+      v.array(
+        v.union(
+          v.literal("Developer"),
+          v.literal("Admin"),
+          v.literal("Staff")
+        )
+      )
+    ),
+    targetEmails: v.optional(v.array(v.string())),
     seen: v.boolean(),
+    seenAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_tenant_seen", ["tenantId", "seen"])

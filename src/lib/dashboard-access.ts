@@ -8,7 +8,7 @@ import { TENANT_SLUG } from "@/lib/config";
 import type { Role } from "@/lib/domain";
 
 type DashboardAccessOptions = {
-  requiredRole?: "staff" | "admin" | "developer";
+  requiredRole?: "tenant" | "staff" | "admin" | "developer";
 };
 
 export type DashboardAccess =
@@ -35,13 +35,14 @@ export type DashboardAccess =
       tenantName?: string;
     };
 
-function hasRequiredRole(role: Role, requiredRole: "staff" | "admin" | "developer") {
+function hasRequiredRole(role: Role, requiredRole: "tenant" | "staff" | "admin" | "developer") {
+  if (requiredRole === "tenant") return true;
   if (requiredRole === "developer") return canAccessDeveloper(role);
   return requiredRole === "admin" ? canAccessAdmin(role) : canAccessStaff(role);
 }
 
 export async function getDashboardAccess({
-  requiredRole = "staff",
+  requiredRole = "tenant",
 }: DashboardAccessOptions = {}): Promise<DashboardAccess> {
   const session = await getCurrentUser();
 
@@ -63,9 +64,10 @@ export async function getDashboardAccess({
     cookieStore.get("simhub-tenant-slug")?.value || TENANT_SLUG;
   const selectedMembership =
     memberships.find((membership) => membership.tenantSlug === selectedSlug) ??
-    memberships.find((membership) => canAccessStaff(membership.role));
+    memberships.find((membership) => canAccessStaff(membership.role)) ??
+    memberships[0];
 
-  if (!selectedMembership || !canAccessStaff(selectedMembership.role)) {
+  if (!selectedMembership) {
     redirect("/auth/access");
   }
 
@@ -85,13 +87,11 @@ export async function getDashboardAccess({
       tenantSlug: selectedMembership.tenantSlug,
       tenantName: selectedMembership.tenantName,
       role: selectedMembership.role,
-      memberships: memberships
-        .filter((membership) => canAccessStaff(membership.role))
-        .map((membership) => ({
-          tenantName: membership.tenantName,
-          tenantSlug: membership.tenantSlug,
-          role: membership.role,
-        })),
+      memberships: memberships.map((membership) => ({
+        tenantName: membership.tenantName,
+        tenantSlug: membership.tenantSlug,
+        role: membership.role,
+      })),
     },
   };
 }

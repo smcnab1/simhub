@@ -14,6 +14,7 @@ const tenantSeedValidator = v.object({
   timezone: v.optional(v.string()),
   contactEmail: v.optional(v.string()),
   notificationEmails: v.optional(v.array(v.string())),
+  notificationEmailsEnabled: v.optional(v.boolean()),
   hoursOfOperation: v.optional(v.string()),
   uploadMaxBytes: v.optional(v.number()),
   minimumAdvanceBookingDays: v.optional(v.number()),
@@ -41,6 +42,7 @@ type TenantSeed = {
   timezone?: string;
   contactEmail?: string;
   notificationEmails?: string[];
+  notificationEmailsEnabled?: boolean;
   hoursOfOperation?: string;
   uploadMaxBytes?: number;
   minimumAdvanceBookingDays?: number;
@@ -88,6 +90,7 @@ function seededTenant(input?: TenantSeed): TenantSeed {
     notificationEmails: input?.notificationEmails ?? [
       "simhub-admin@example.local",
     ],
+    notificationEmailsEnabled: input?.notificationEmailsEnabled ?? true,
     hoursOfOperation: input?.hoursOfOperation?.trim() || "Mon-Fri 08:00-18:00",
     uploadMaxBytes: input?.uploadMaxBytes ?? 104_857_600,
     minimumAdvanceBookingDays: input?.minimumAdvanceBookingDays,
@@ -111,6 +114,7 @@ async function upsertTenant(ctx: MutationCtx, seed: TenantSeed) {
     notificationEmails: seed.notificationEmails ?? [
       "simhub-admin@example.local",
     ],
+    notificationEmailsEnabled: seed.notificationEmailsEnabled ?? true,
     hoursOfOperation: seed.hoursOfOperation ?? "Mon-Fri 08:00-18:00",
     uploadMaxBytes: seed.uploadMaxBytes ?? 104_857_600,
     minimumAdvanceBookingDays: seed.minimumAdvanceBookingDays,

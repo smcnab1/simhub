@@ -189,6 +189,31 @@ Public tracking uses booking reference plus requester email through
 `?email=...` after submission; otherwise the tracking page asks for the email
 before showing requester-visible request details.
 
+## Email Notifications
+
+Operational email delivery uses Resend from Convex actions. Booking mutations
+schedule internal email actions only after the database write succeeds, so
+Resend failures are logged and do not block request submission or status
+updates.
+
+Set these values in the Convex environment for email delivery:
+
+```bash
+RESEND_API_KEY=re_...
+EMAIL_FROM="SimHub <notifications@example.com>"
+EMAIL_DEV_MODE=false
+```
+
+When `EMAIL_DEV_MODE=true`, or when `RESEND_API_KEY`/`EMAIL_FROM` is missing,
+the email wrapper logs the intended payload to the Convex console instead of
+sending. New booking request emails are sent to the requester and any CC
+addresses. Status updates, public comments, and room allocation updates are
+sent to the requester and CC list too.
+
+Admins can also keep a tenant-level notification list in Facility Settings.
+Those addresses receive new booking request emails only when the Facility
+Settings toggle for notification recipient emails is enabled.
+
 ## Local Bootstrap and Seeding
 
 For a first local setup, add your WorkOS email to `.env.local` so the seeded

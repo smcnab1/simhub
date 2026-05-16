@@ -82,7 +82,7 @@ const developerItems: NavigationItem[] = [
 export const dashboardNavigation: NavigationGroup[] = [
   {
     title: "User",
-    roles: ["Developer", "Admin", "Staff"],
+    roles: ["Developer", "Admin", "Staff", "Requester"],
     items: [
       { title: "Dashboard", url: "/dashboard", icon: LayoutDashboardIcon },
       { title: "Notifications", url: "/dashboard/notifications", icon: BellIcon },
