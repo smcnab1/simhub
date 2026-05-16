@@ -9,8 +9,48 @@ import { formatRequestDate, formatRooms } from "@/lib/format";
 export function DashboardHome() {
   const auth = useDashboardAuth();
   const tenantSlug = auth.tenantSlug;
-  const summary = useQuery(api.bookings.dashboardSummary, { tenantSlug, auth });
-  const requests = useQuery(api.bookings.listRequests, { tenantSlug, auth });
+  const isRequester = auth.role === "Requester";
+  const summary = useQuery(
+    api.bookings.dashboardSummary,
+    isRequester ? "skip" : { tenantSlug, auth }
+  );
+  const staffRequests = useQuery(
+    api.bookings.listRequests,
+    isRequester ? "skip" : { tenantSlug, auth }
+  );
+  const myRequests = useQuery(
+    api.bookings.listMyRequests,
+    isRequester ? { tenantSlug, auth } : "skip"
+  );
+  const requests = isRequester ? myRequests : staffRequests;
+
+  if (isRequester) {
+    return (
+      <>
+        <SectionHeader eyebrow="Requester" title="My Bookings" />
+        <div className="grid gap-3">
+          {(requests ?? []).map((request) => (
+            <RequestCard
+              key={request._id}
+              request={{
+                id: request._id,
+                sessionName: request.sessionName,
+                requesterName: request.requesterName,
+                date: formatRequestDate(request),
+                rooms: [formatRooms(request)],
+                status: request.status,
+              }}
+            />
+          ))}
+          {requests?.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-border bg-card/80 p-5 text-sm text-muted-foreground">
+              No booking requests found for your account yet.
+            </p>
+          ) : null}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

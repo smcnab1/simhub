@@ -1,5 +1,7 @@
 "use client"
 
+import { useQuery } from "convex/react"
+import { api } from "../../convex/_generated/api"
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
@@ -51,6 +53,10 @@ export function AppSidebar({
     role: auth.role,
     environment,
   })
+  const notificationUnseenCount = useQuery(
+    api.notifications.unseenCountByTenantSlug,
+    { tenantSlug: auth.tenantSlug, auth }
+  )
 
   return (
     <Sidebar variant="sidebar" collapsible="offcanvas" {...props}>
@@ -115,7 +121,10 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain groups={navGroups} />
+        <NavMain
+          groups={navGroups}
+          notificationUnseenCount={notificationUnseenCount ?? 0}
+        />
         <NavSecondary
           items={[
             {

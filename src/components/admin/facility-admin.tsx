@@ -149,6 +149,7 @@ export function FacilityAdmin() {
   const [name, setName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [notificationEmails, setNotificationEmails] = useState("");
+  const [notificationEmailsEnabled, setNotificationEmailsEnabled] = useState(true);
   const [weekHours, setWeekHours] = useState<WeekHours>(DEFAULT_HOURS);
   const [uploadMaxMb, setUploadMaxMb] = useState("100");
   const [minimumAdvanceBookingDays, setMinimumAdvanceBookingDays] = useState("");
@@ -163,6 +164,7 @@ export function FacilityAdmin() {
       setName(tenant.name);
       setContactEmail(tenant.contactEmail);
       setNotificationEmails(tenant.notificationEmails.join(", "));
+      setNotificationEmailsEnabled(tenant.notificationEmailsEnabled ?? true);
       setWeekHours(parseHours(tenant.hoursOfOperation));
       setUploadMaxMb(String(Math.round(tenant.uploadMaxBytes / 1024 / 1024)));
       setMinimumAdvanceBookingDays(
@@ -201,6 +203,7 @@ export function FacilityAdmin() {
         name: name.trim(),
         contactEmail: contactEmail.trim(),
         notificationEmails: parseEmails(notificationEmails),
+        notificationEmailsEnabled,
         hoursOfOperation: serializeHours(weekHours),
         uploadMaxBytes: Number(uploadMaxMb || 100) * 1024 * 1024,
         minimumAdvanceBookingDays:
@@ -300,13 +303,13 @@ export function FacilityAdmin() {
       {/* Notifications */}
       <AdminSettingsCard
         title="Notification Emails"
-        description="Additional email addresses that receive booking notifications and alerts."
+        description="Additional email addresses that can receive new booking request alerts."
         icon={<BellIcon className="size-4" />}
       >
         <div className="flex flex-col gap-0">
           <AdminSettingsRow
             label="Notification recipients"
-            description="Comma-separated list of email addresses. These receive copies of all booking-related notifications."
+            description="Comma-separated list of email addresses for tenant-level new booking alerts."
             stacked
           >
             {isLoading ? (
@@ -324,6 +327,28 @@ export function FacilityAdmin() {
                 <p className="text-xs text-muted-foreground">
                   Separate multiple addresses with commas.
                 </p>
+              </div>
+            )}
+          </AdminSettingsRow>
+
+          <AdminSettingsRow
+            label="Email notification recipients"
+            description="Send new booking request emails to the addresses listed above."
+          >
+            {isLoading ? (
+              <FieldSkeleton />
+            ) : (
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={notificationEmailsEnabled}
+                  onCheckedChange={(checked) => {
+                    setNotificationEmailsEnabled(checked);
+                    markDirty();
+                  }}
+                />
+                <Label className="text-sm text-muted-foreground">
+                  {notificationEmailsEnabled ? "Enabled" : "Disabled"}
+                </Label>
               </div>
             )}
           </AdminSettingsRow>

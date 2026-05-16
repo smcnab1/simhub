@@ -87,8 +87,16 @@ function renderCustomField(field: {
   options?: string[];
   maxLength?: number;
 }) {
-  if (field.type === "divider") return <hr className="my-2 border-border md:col-span-2" />;
-  if (field.type === "note") return <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground md:col-span-2">{field.label}</p>;
+  if (field.type === "divider") {
+    return <hr key={field.id} className="my-2 border-border md:col-span-2" />;
+  }
+  if (field.type === "note") {
+    return (
+      <p key={field.id} className="rounded-xl bg-muted p-3 text-sm text-muted-foreground md:col-span-2">
+        {field.label}
+      </p>
+    );
+  }
 
   const label = <span>{field.label}{field.required ? " *" : ""}</span>;
   const name = `custom:${field.id}`;
@@ -513,7 +521,7 @@ export function BookingWizard() {
 
       setTrackingId(requestId);
       setStatus("Request submitted.");
-      window.location.href = `/requests/${requestId}?email=${encodeURIComponent(requesterEmail)}`;
+      window.location.href = `/requests/${requestId}?email=${encodeURIComponent(requesterEmail)}&submitted=1`;
       form.reset();
       setRoomQuantities({});
       setRequestedRoomIds([]);
