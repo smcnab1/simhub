@@ -1,5 +1,6 @@
 import { DashboardAuthProvider } from "@/components/dashboard-auth";
 import { AppSidebar } from "@/components/app-sidebar";
+import { NotAllowed } from "@/components/not-allowed";
 import { DashboardTopbar } from "@/components/ui";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,7 +17,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     process.env.NODE_ENV;
 
   if (!access.ok) {
-    return null;
+    return (
+      <main className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <NotAllowed
+          title="Dashboard access required"
+          message="Your account is signed in, but it does not have access to this dashboard workspace. Ask an admin to update your role, or switch workspaces from account access."
+        />
+      </main>
+    );
   }
 
   return (

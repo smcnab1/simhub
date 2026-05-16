@@ -4,8 +4,10 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Clock, DoorOpen, Info, LoaderCircle, Search, Upload, Users } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
+import { toast } from "sonner";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { EmptyState, InlineError } from "@/components/app-state";
 import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, formFieldClass, primaryButtonClass, subtleButtonClass } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
@@ -21,8 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
 import { zonedDateTimeToIso } from "@/lib/date-time";
 import { formatBlockTime } from "@/lib/format";
+import { friendlyErrorMessage } from "@/lib/errors";
 import {
   bookingBlocksFromSessionWindow,
   evaluateBookingNoticeWindow,
@@ -166,6 +170,34 @@ function renderCustomField(field: {
   );
 }
 
+function BookingWizardSkeleton() {
+  return (
+    <div className="grid gap-5" aria-label="Loading booking form">
+      {[0, 1, 2, 3].map((section) => (
+        <Card key={section}>
+          <Skeleton className="h-5 w-48" />
+          <Skeleton className="mt-3 h-4 w-2/3" />
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <Skeleton key={item} className="h-24 rounded-xl" />
+            ))}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function OptionCardSkeletons({ count = 3 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, index) => (
+        <Skeleton key={index} className="h-32 rounded-xl" />
+      ))}
+    </>
+  );
+}
+
 export function BookingWizard() {
   const auth = useOptionalDashboardAuth();
   const tenant = useQuery(api.tenants.getBySlug, { slug: TENANT_SLUG });
@@ -193,6 +225,9 @@ export function BookingWizard() {
   const [roomQuantities, setRoomQuantities] = useState<Record<string, number>>({});
   const roomTypes = useQuery(api.tenants.listRoomTypes, { tenantSlug: TENANT_SLUG, campusId: campusId || undefined });
   const rooms = useQuery(api.tenants.listRooms, { tenantSlug: TENANT_SLUG, campusId: campusId || undefined });
+  const initialLoading = tenant === undefined || campuses === undefined || formConfig === undefined;
+  const roomsLoading = rooms === undefined;
+  const roomTypesLoading = roomTypes === undefined;
 
   const maxUploadMb = useMemo(() => Math.round((tenant?.uploadMaxBytes ?? 104857600) / 1024 / 1024), [tenant?.uploadMaxBytes]);
   const selectedRoomTypeRequests = useMemo(
@@ -536,7 +571,9 @@ export function BookingWizard() {
         sessionEnd: "",
       });
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Could not submit request.");
+      const message = friendlyErrorMessage(error, "Could not submit request. Check the highlighted details and try again.");
+      setFormError(message);
+      toast.error(message);
       setStatus("");
     } finally {
       setSubmitting(false);
@@ -574,6 +611,29 @@ export function BookingWizard() {
       current.includes(roomId)
         ? current.filter((id) => id !== roomId)
         : [...current, roomId]
+    );
+  }
+
+  if (initialLoading) {
+    return (
+      <>
+        <SectionHeader eyebrow="Request wizard" title="Book a Room" />
+        <BookingWizardSkeleton />
+      </>
+    );
+  }
+
+  if (!tenant || !formConfig) {
+    return (
+      <>
+        <SectionHeader eyebrow="Request wizard" title="Book a Room" />
+        <EmptyState
+          icon={AlertTriangle}
+          title="Booking form unavailable"
+          message="We could not load the booking workspace. Refresh the page, or contact staff if this keeps happening."
+          action={{ label: "Open calendar", href: "/calendar" }}
+        />
+      </>
     );
   }
 
@@ -634,7 +694,7 @@ export function BookingWizard() {
                 />
               </label>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {filteredRooms.map((room) => {
+                {roomsLoading ? <OptionCardSkeletons /> : filteredRooms.map((room) => {
                   const selected = requestedRoomIds.includes(room._id);
 
                   return (
@@ -668,10 +728,17 @@ export function BookingWizard() {
                   );
                 })}
               </div>
-              {filteredRooms.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  No active rooms match your search.
-                </p>
+              {!roomsLoading && filteredRooms.length === 0 ? (
+                <EmptyState
+                  icon={DoorOpen}
+                  title={roomSearch.trim() ? "No rooms match that search" : "No active rooms available"}
+                  message={
+                    roomSearch.trim()
+                      ? "Try a different room name, code, type, or campus."
+                      : "Use room type quantity instead, or contact staff if you need a specific room."
+                  }
+                  className="text-left md:col-span-2 xl:col-span-3"
+                />
               ) : null}
               <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">
                 {selectedSpecificRooms.length
@@ -681,7 +748,7 @@ export function BookingWizard() {
             </div>
           ) : (
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {(roomTypes ?? []).map((roomType) => {
+              {roomTypesLoading ? <OptionCardSkeletons /> : roomTypes.map((roomType) => {
                 const quantity = roomQuantities[roomType._id] ?? 0;
 
                 return (
@@ -725,10 +792,13 @@ export function BookingWizard() {
                   </label>
                 );
               })}
-              {roomTypes?.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  No room types configured yet.
-                </p>
+              {!roomTypesLoading && roomTypes.length === 0 ? (
+                <EmptyState
+                  icon={DoorOpen}
+                  title="No room types available"
+                  message="There are no active room types configured for this campus. Try all campuses, switch to specific rooms, or contact staff."
+                  className="md:col-span-2 xl:col-span-3"
+                />
               ) : null}
               {selectedRoomTypeRequests.length ? (
                 <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground md:col-span-2 xl:col-span-3">
@@ -893,7 +963,11 @@ export function BookingWizard() {
             </p>
           </div>
           <p className="mt-3 text-sm text-muted-foreground">Submission creates a Pending request and notifies staff. You can track it with the booking reference and requester email.</p>
-          {formError ? <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{formError}</p> : null}
+          {formError ? (
+            <div className="mt-3">
+              <InlineError message={formError} />
+            </div>
+          ) : null}
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button disabled={submitting || bookingNoticeBlocksSubmission} className={primaryButtonClass}>
               {submitting ? "Submitting..." : "Submit request"}

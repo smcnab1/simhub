@@ -23,6 +23,7 @@ import { toast } from "sonner";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { EmptyState, InlineError } from "@/components/app-state";
 import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
 import { formFieldClass, primaryButtonClass } from "@/components/ui";
 import { StatusBadge } from "@/components/admin/status-badge";
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -73,6 +75,7 @@ import {
   sessionDurationMinutes,
 } from "@/lib/booking-logic";
 import { auditEventLabel } from "@/lib/audit-types";
+import { friendlyErrorMessage } from "@/lib/errors";
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -192,6 +195,42 @@ function formatAuditTime(value?: number) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function RequestDetailSkeleton() {
+  return (
+    <div className="grid gap-6" aria-label="Loading request">
+      <header className="space-y-3">
+        <Skeleton className="h-6 w-24 rounded-full" />
+        <Skeleton className="h-9 w-2/3" />
+        <Skeleton className="h-4 w-80 max-w-full" />
+      </header>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="grid gap-5">
+          {[0, 1, 2].map((item) => (
+            <Card key={item}>
+              <CardHeader className="border-b pb-3">
+                <Skeleton className="h-5 w-40" />
+              </CardHeader>
+              <CardContent className="grid gap-3 pt-4">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-4 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="grid content-start gap-5">
+          <Card>
+            <CardContent className="grid gap-3 pt-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function eventMetadata(event: TimelineEvent) {
@@ -508,8 +547,7 @@ function ManualAllocationPanel({
       toast.success("Room allocation saved.");
       setIsEditingAllocation(false);
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "Unable to save allocation.";
+      const message = friendlyErrorMessage(caught, "Unable to save allocation.");
       setError(message);
       toast.error(message);
     } finally {
@@ -626,9 +664,11 @@ function ManualAllocationPanel({
                 );
               })}
               {rooms === undefined ? (
-                <p className="px-2 py-1 text-sm text-muted-foreground">
-                  Loading rooms...
-                </p>
+                <div className="grid gap-2 p-1">
+                  {[0, 1, 2].map((item) => (
+                    <Skeleton key={item} className="h-9 rounded-lg" />
+                  ))}
+                </div>
               ) : null}
               {rooms !== undefined && filteredRooms.length === 0 ? (
                 <p className="px-2 py-1 text-sm text-muted-foreground">
@@ -694,12 +734,7 @@ function ManualAllocationPanel({
           </div>
 
           {error ? (
-            <p
-              className="rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive"
-              role="alert"
-            >
-              {error}
-            </p>
+            <InlineError message={error} />
           ) : null}
 
           <div className="flex flex-wrap gap-2">
@@ -810,7 +845,17 @@ function ActivityTimelineCard({
       }
     >
       {events === undefined ? (
-        <p className="text-sm text-muted-foreground">Loading activity...</p>
+        <div className="grid gap-3" aria-label="Loading activity">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="flex gap-3">
+              <Skeleton className="size-6 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : events.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No activity recorded yet.
@@ -1088,11 +1133,7 @@ export function RequestDetail({
       });
       toast.success(`Booking moved to ${args.status.toLowerCase()}.`);
     } catch (caught) {
-      toast.error(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to update booking status."
-      );
+      toast.error(friendlyErrorMessage(caught, "Unable to update booking status."));
     } finally {
       setStatusBusy(false);
     }
@@ -1178,9 +1219,7 @@ export function RequestDetail({
       toast.success("Comment added.");
       form.reset();
     } catch (caught) {
-      toast.error(
-        caught instanceof Error ? caught.message : "Unable to add comment."
-      );
+      toast.error(friendlyErrorMessage(caught, "Unable to add comment."));
     } finally {
       setCommentBusy(false);
     }
@@ -1235,20 +1274,21 @@ export function RequestDetail({
   // ---------------------------------------------------------------------------
 
   if (request === undefined) {
-    return (
-      <div className="flex items-center gap-2 rounded-xl border border-border bg-card/80 p-5 text-sm text-muted-foreground">
-        <LoaderCircle className="size-4 animate-spin" aria-hidden />
-        Loading request...
-      </div>
-    );
+    return <RequestDetailSkeleton />;
   }
 
   if (!request) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card/80 p-8 text-center text-sm text-muted-foreground">
-        <FileText className="mx-auto mb-2 size-8 opacity-30" aria-hidden />
-        Request not found.
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="Request not found"
+        message={
+          publicView
+            ? "Check that the booking link and requester email are correct."
+            : "This request may have been removed, or your account may not have access to it."
+        }
+        action={{ label: publicView ? "Back to booking form" : "Back to requests", href: publicView ? "/book" : "/dashboard/requests" }}
+      />
     );
   }
 

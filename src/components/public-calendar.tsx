@@ -6,7 +6,9 @@ import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../convex/_generated/api";
+import { EmptyState } from "@/components/app-state";
 import { Card, SectionHeader, emptyStateClass, subtleButtonClass } from "@/components/ui";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TENANT_SLUG } from "@/lib/config";
 import { localDateString } from "@/lib/date-time";
 import { formatTimeRange } from "@/lib/format";
@@ -97,6 +99,37 @@ function PublicEventCard({ event }: { event: PublicEvent }) {
         ) : null}
       </div>
     </article>
+  );
+}
+
+function CalendarSkeleton() {
+  return (
+    <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-border bg-border" aria-label="Loading calendar">
+      {weekdayLabels.map((label) => (
+        <div key={label} className="bg-muted px-2 py-2 text-center text-xs font-semibold uppercase text-muted-foreground">
+          {label}
+        </div>
+      ))}
+      {Array.from({ length: 35 }).map((_, index) => (
+        <div key={index} className="aspect-square min-h-14 bg-card p-2 sm:min-h-20">
+          <Skeleton className="mx-auto h-4 w-5" />
+          {index % 5 === 0 ? <Skeleton className="mx-auto mt-3 size-2 rounded-full" /> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EventListSkeleton() {
+  return (
+    <div className="grid gap-3" aria-label="Loading events">
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="rounded-xl border border-border bg-card p-4">
+          <Skeleton className="h-5 w-2/3" />
+          <Skeleton className="mt-3 h-4 w-28" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -223,15 +256,20 @@ export function PublicCalendar({
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="p-3 sm:p-4">
           {isLoading ? (
-            <div className={emptyStateClass}>Loading approved activity...</div>
+            <CalendarSkeleton />
           ) : (
             <>
               {filteredEvents.length === 0 ? (
-                <div className="mb-4 rounded-xl border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-                  {query.trim()
-                    ? "No approved activity matches that search for this month."
-                    : "No approved activity is scheduled for this month."}
-                </div>
+                <EmptyState
+                  title={query.trim() ? "No matching activity" : "No activity this month"}
+                  message={
+                    query.trim()
+                      ? "Try a different session name or room search."
+                      : "Approved sessions will appear here once staff confirm bookings."
+                  }
+                  action={{ label: "Book a room", href: "/book" }}
+                  className="mb-4"
+                />
               ) : null}
 
               <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-border bg-border">
@@ -279,7 +317,7 @@ export function PublicCalendar({
           <h2 className="mt-1 text-xl font-bold text-foreground">{selectedDateLabel}</h2>
           <div className="mt-4 grid gap-3">
             {isLoading ? (
-              <div className={emptyStateClass}>Loading events...</div>
+              <EventListSkeleton />
             ) : selectedEvents.length > 0 ? (
               selectedEvents.map((event) => (
                 <PublicEventCard key={event._id} event={event} />

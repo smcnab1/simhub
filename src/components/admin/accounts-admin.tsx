@@ -39,6 +39,7 @@ import {
   CheckIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { friendlyErrorMessage } from "@/lib/errors";
 import type { Role } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 
@@ -249,9 +250,8 @@ export function AccountsAdmin() {
       });
       setEditingId(null);
       toast.success(editingId ? "User updated." : "User added.");
-    } catch {
-      toast.error("Failed to save user.");
-      throw new Error("save failed");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Failed to save user."));
     }
   }
 
@@ -260,8 +260,8 @@ export function AccountsAdmin() {
     try {
       await deleteUser({ tenantSlug, auth, userId: deleteTarget._id });
       toast.success("User removed.");
-    } catch {
-      toast.error("Failed to remove user.");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Failed to remove user."));
     } finally {
       setDeleteTarget(null);
     }

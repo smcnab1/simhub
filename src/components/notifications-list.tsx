@@ -4,12 +4,16 @@ import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
+import { CardSkeletonList, EmptyState } from "@/components/app-state";
 import { useDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, emptyStateClass } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckIcon, ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import { BellIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import { toast } from "sonner";
+import { friendlyErrorMessage } from "@/lib/errors";
 
 type NotificationDisplay = {
   title: string;
@@ -90,6 +94,25 @@ export function NotificationsList() {
   const markSeen = useMutation(api.notifications.markSeen);
   const markAllSeen = useMutation(api.notifications.markAllSeen);
   const unseenLabel = `${unseenCount ?? 0} unseen`;
+  const isLoading = notifications === undefined;
+
+  async function onMarkAllSeen() {
+    try {
+      await markAllSeen({ tenantSlug, auth });
+      toast.success("Notifications marked as seen.");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not mark notifications as seen."));
+    }
+  }
+
+  async function onMarkSeen(notificationId: Id<"notifications">) {
+    try {
+      await markSeen({ tenantSlug, auth, notificationId });
+      toast.success("Notification marked as seen.");
+    } catch (error) {
+      toast.error(friendlyErrorMessage(error, "Could not mark this notification as seen."));
+    }
+  }
 
   return (
     <>
@@ -99,8 +122,8 @@ export function NotificationsList() {
         action={
           <Button
             variant="outline"
-            onClick={() => markAllSeen({ tenantSlug, auth })}
-            disabled={!unseenCount}
+            onClick={() => void onMarkAllSeen()}
+            disabled={!unseenCount || unseenCount === undefined}
           >
             <CheckIcon className="size-4" />
             Mark all seen
@@ -118,7 +141,9 @@ export function NotificationsList() {
         </TabsList>
         <TabsContent value={filter}>
           <Card className="space-y-3">
-        {(notifications ?? []).map((item) => {
+        {isLoading ? (
+          <CardSkeletonList rows={3} />
+        ) : notifications.length > 0 ? notifications.map((item) => {
           const display = parseNotification(item.message, item.title);
           const hasWarnings =
             display.availabilityWarnings &&
@@ -179,7 +204,7 @@ export function NotificationsList() {
                       variant="ghost"
                       size="sm"
                       onClick={() =>
-                        markSeen({ tenantSlug, auth, notificationId: item._id })
+                        void onMarkSeen(item._id)
                       }
                     >
                       <CheckIcon className="size-4" />
@@ -205,14 +230,19 @@ export function NotificationsList() {
               </details>
             </article>
           );
-        })}
-            {notifications?.length === 0 ? (
-              <p className={emptyStateClass}>
-                {filter === "unseen"
-                  ? "No unseen notifications."
-                  : "No notifications yet."}
-              </p>
-            ) : null}
+        }) : (
+          <EmptyState
+            icon={BellIcon}
+            title={filter === "unseen" ? "All caught up" : "No notifications yet"}
+            message={
+              filter === "unseen"
+                ? "New booking activity that needs attention will appear here."
+                : "Notifications are created when booking requests or workflow changes need visibility."
+            }
+            action={{ label: "Review requests", href: "/dashboard/requests" }}
+            className={emptyStateClass}
+          />
+        )}
           </Card>
         </TabsContent>
       </Tabs>
