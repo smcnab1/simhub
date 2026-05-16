@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Ban,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
@@ -32,6 +33,7 @@ import {
   plainDateToLocalDate,
   todayPlainDate,
 } from "@/lib/date-time";
+import { BlockedTimeDialog } from "@/components/blocked-time";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -59,6 +61,7 @@ type CalendarRoom = {
   name: string;
   capacity: number;
   campusId?: string;
+  roomTypeId?: string;
   active: boolean;
   roomType?: { name: string } | null;
   campus?: { _id: string; name: string } | null;
@@ -86,6 +89,20 @@ type CampusGroup = {
   campusId: string;
   campusName: string;
   rooms: CalendarRoom[];
+};
+
+type CalendarBlockedTime = {
+  _id: string;
+  scope: "Room" | "RoomType" | "Campus" | "Tenant";
+  start: string;
+  end: string;
+  reason: string;
+  roomId?: string;
+  roomTypeId?: string;
+  campusId?: string;
+  roomName?: string;
+  roomTypeName?: string;
+  campusName?: string;
 };
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -169,6 +186,22 @@ function bookingChipClass(status: string) {
     return "border-primary bg-primary text-primary-foreground shadow-primary/20";
   }
   return "border-border bg-muted text-foreground shadow-foreground/10";
+}
+
+function blockedTimeAffectsRoom(blocked: CalendarBlockedTime, room: CalendarRoom) {
+  switch (blocked.scope) {
+    case "Tenant":
+      return true;
+    case "Campus":
+      return room.campusId === blocked.campusId;
+    case "RoomType":
+      return room.roomTypeId === blocked.roomTypeId || 
+             room.roomType?.name === blocked.roomTypeName;
+    case "Room":
+      return room._id === blocked.roomId;
+    default:
+      return false;
+  }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -296,12 +329,17 @@ function CampusHeaderRow({
 function RoomRow({
   room,
   bookings,
+  blockedTimes,
   hourCount,
 }: {
   room: CalendarRoom;
   bookings: CalendarRequest[];
+  blockedTimes: CalendarBlockedTime[];
   hourCount: number;
 }) {
+  // Filter blocked times that affect this room
+  const relevantBlocks = blockedTimes.filter((bt) => blockedTimeAffectsRoom(bt, room));
+
   return (
     <div className="contents" role="row">
       {/* Room label */}
@@ -331,6 +369,42 @@ function RoomRow({
             <div key={h} className="border-l border-border/60 first:border-l-0" />
           ))}
         </div>
+
+        {/* Blocked time backgrounds */}
+        {relevantBlocks.map((blocked) => {
+          const placement = getGridPlacement([{ label: "Session", start: blocked.start, end: blocked.end }]);
+          return (
+            <div
+              key={blocked._id}
+              className="absolute inset-y-0 z-0 bg-destructive/10"
+              style={{
+                left: placement.left,
+                width: placement.width,
+              }}
+              title={`Blocked: ${blocked.reason}`}
+            />
+          );
+        })}
+
+        {/* Blocked time chips */}
+        {relevantBlocks.map((blocked, idx) => {
+          const placement = getGridPlacement([{ label: "Session", start: blocked.start, end: blocked.end }]);
+          return (
+            <div
+              key={`chip-${blocked._id}`}
+              className="absolute z-20 flex items-center gap-1 overflow-hidden rounded border-l-2 border-destructive bg-destructive/20 px-1.5 py-0.5 text-xs text-destructive"
+              style={{
+                left: placement.left,
+                width: placement.width,
+                bottom: `${4 + idx * 24}px`,
+              }}
+              title={`Blocked: ${blocked.reason} (${placement.timeLabel})`}
+            >
+              <Ban className="size-3 shrink-0" />
+              <span className="truncate font-medium">{blocked.reason}</span>
+            </div>
+          );
+        })}
 
         {/* Booking chips */}
         {bookings.map((booking, idx) => {
@@ -420,6 +494,9 @@ export function ResourceCalendar() {
   const [showApproved, setShowApproved] = useState(true);
   const [roomTypeFilter, setRoomTypeFilter] = useState<string>("all");
 
+  // Block Time dialog state
+  const [blockTimeDialogOpen, setBlockTimeDialogOpen] = useState(false);
+
   // Data
   const auth = useDashboardAuth();
   const tenantSlug = auth.tenantSlug;
@@ -440,6 +517,23 @@ export function ResourceCalendar() {
     tenantSlug,
     auth,
   });
+
+  // Query blocked times for calendar (only when tenant is loaded)
+  const blockedTimesRaw = useQuery(
+    api.blockedTimes.listBlockedTimesForCalendar,
+    tenant?._id
+      ? {
+          tenantId: tenant._id,
+          rangeStart: new Date(selectedDateString + "T00:00:00").toISOString(),
+          rangeEnd: new Date(selectedDateString + "T23:59:59").toISOString(),
+        }
+      : "skip"
+  );
+
+  const blockedTimesForDay = useMemo<CalendarBlockedTime[]>(() => {
+    if (!blockedTimesRaw) return [];
+    return blockedTimesRaw as CalendarBlockedTime[];
+  }, [blockedTimesRaw]);
 
   const isLoading =
     rooms === undefined || campuses === undefined || requests === undefined;
@@ -592,7 +686,12 @@ export function ResourceCalendar() {
         eyebrow="Operations"
         action={
           <div className="flex flex-wrap gap-2">
-            <button className="rounded-lg border border-border bg-card/90 px-3 py-2 text-sm font-medium shadow-sm hover:bg-muted">
+            <button
+              type="button"
+              onClick={() => setBlockTimeDialogOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card/90 px-3 py-2 text-sm font-medium shadow-sm hover:bg-muted"
+            >
+              <Ban className="size-4" />
               Block Time
             </button>
             <a
@@ -848,6 +947,7 @@ export function ResourceCalendar() {
                               key={room._id}
                               room={room}
                               bookings={roomBookings}
+                              blockedTimes={blockedTimesForDay}
                               hourCount={hourCount}
                             />
                           );
@@ -891,6 +991,10 @@ export function ResourceCalendar() {
                 <AlertTriangle className="size-3" />
                 Unallocated
               </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-3 py-1 text-destructive">
+                <Ban className="size-3" />
+                Blocked
+              </span>
               <span className="ml-auto flex items-center gap-1 text-muted-foreground">
                 <ChevronsUpDown className="size-3" /> Click campus header to expand/collapse
               </span>
@@ -898,6 +1002,19 @@ export function ResourceCalendar() {
           </>
         )}
       </Card>
+
+      {/* Block Time Dialog */}
+      {tenant?._id && (
+        <BlockedTimeDialog
+          tenantId={tenant._id}
+          open={blockTimeDialogOpen}
+          onOpenChange={setBlockTimeDialogOpen}
+          initialData={{
+            startDate: selectedDate,
+            endDate: selectedDate,
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -462,7 +462,9 @@ async function availabilityResources(
       requestedRoomIds: request.requestedRoomIds,
       roomTypeRequests: request.roomTypeRequests,
     })),
-    blockedTimes: blockedTimes.map((blockedTime) => ({
+    blockedTimes: blockedTimes
+      .filter((bt) => (bt.status ?? "Active") === "Active")
+      .map((blockedTime) => ({
       id: blockedTime._id,
       roomId: blockedTime.roomId,
       roomTypeId: blockedTime.roomTypeId,
@@ -985,7 +987,16 @@ export const dashboardSummary = query({
       ctx.db.query("notifications").withIndex("by_tenant_seen", (q) => q.eq("tenantId", tenant._id).eq("seen", false)).collect(),
       ctx.db.query("blockedTimes").withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id)).collect(),
     ]);
-    return { pending: pending.length, approved: approved.length, unseen: unseen.length, conflicts: blockedTimes.length };
+    
+    // Count only active blocked times that are current or upcoming
+    const now = Date.now();
+    const activeBlockedCount = blockedTimes.filter((bt) => {
+      if ((bt.status ?? "Active") !== "Active") return false;
+      const blockEnd = new Date(bt.end).getTime();
+      return blockEnd > now;
+    }).length;
+    
+    return { pending: pending.length, approved: approved.length, unseen: unseen.length, conflicts: activeBlockedCount };
   },
 });
 

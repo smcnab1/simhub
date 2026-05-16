@@ -413,9 +413,21 @@ export default defineSchema({
   blockedTimes: defineTable({
     tenantId: v.id("tenants"),
 
-    // If roomId is provided, block one room.
-    // If roomTypeId is provided, block all rooms of that type.
-    // If neither is provided, treat as a tenant-wide unavailable period if needed.
+    /**
+     * Scope determines which resources are blocked.
+     * Optional for backwards compatibility with pre-existing rows.
+     * When absent, scope is derived from which of roomId/roomTypeId/campusId is set.
+     */
+    scope: v.optional(
+      v.union(
+        v.literal("Room"),
+        v.literal("RoomType"),
+        v.literal("Campus"),
+        v.literal("Tenant"),
+      )
+    ),
+
+    // Populated according to scope.
     roomId: v.optional(v.id("rooms")),
     roomTypeId: v.optional(v.id("roomTypes")),
     campusId: v.optional(v.id("campuses")),
@@ -423,11 +435,26 @@ export default defineSchema({
     start: v.string(),
     end: v.string(),
     reason: v.string(),
+    notes: v.optional(v.string()),
+
+    createdByUserId: v.optional(v.id("users")),
+
+    /**
+     * Lifecycle status. Optional for backwards compat — absent rows are
+     * treated as "Active" everywhere (see availabilityResources mapping).
+     */
+    status: v.optional(
+      v.union(v.literal("Active"), v.literal("Cancelled"))
+    ),
+
+    cancelledAt: v.optional(v.number()),
+    cancelledByUserId: v.optional(v.id("users")),
 
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   })
     .index("by_tenant", ["tenantId"])
+    .index("by_tenant_status", ["tenantId", "status"])
     .index("by_tenant_room", ["tenantId", "roomId"])
     .index("by_tenant_room_type", ["tenantId", "roomTypeId"])
     .index("by_tenant_campus", ["tenantId", "campusId"]),
