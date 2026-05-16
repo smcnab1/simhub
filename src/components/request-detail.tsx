@@ -33,6 +33,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -728,6 +733,56 @@ function ManualAllocationPanel({
 }
 
 // ---------------------------------------------------------------------------
+// Collapsible card wrapper
+// ---------------------------------------------------------------------------
+
+function CollapsibleCard({
+  title,
+  icon: Icon,
+  badge,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  badge?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger className="w-full text-left">
+          <CardHeader className="border-b pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                {Icon ? (
+                  <Icon className="size-4 text-muted-foreground" aria-hidden />
+                ) : null}
+                {title}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {badge}
+                {open ? (
+                  <ChevronUp className="size-4 text-muted-foreground" aria-hidden />
+                ) : (
+                  <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
+                )}
+              </div>
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-4">{children}</CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Activity timeline
 // ---------------------------------------------------------------------------
 
@@ -738,83 +793,80 @@ function ActivityTimelineCard({
   events?: TimelineEvent[];
   rooms?: RoomOption[];
 }) {
+  const eventCount = events?.length ?? 0;
+
   return (
-    <Card>
-      <CardHeader className="border-b pb-3">
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Clock className="size-4 text-muted-foreground" aria-hidden />
-            Activity timeline
-          </CardTitle>
-          {events !== undefined ? (
-            <Badge variant="outline" className="text-xs">
-              {events.length} {events.length === 1 ? "event" : "events"}
-            </Badge>
-          ) : null}
-        </div>
-      </CardHeader>
-
-      <CardContent className="pt-4">
-        {events === undefined ? (
-          <p className="text-sm text-muted-foreground">Loading activity...</p>
-        ) : events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No activity recorded yet.
-          </p>
-        ) : (
-          <ol className="relative border-l border-border pl-5">
-            {events.map((event, idx) => {
-              const isComment = event.eventType.includes("comment");
-              return (
-                <li
-                  key={event._id}
-                  className={`relative pb-5 ${idx === events.length - 1 ? "pb-0" : ""}`}
+    <CollapsibleCard
+      title="Activity timeline"
+      icon={Clock}
+      defaultOpen={false}
+      badge={
+        events !== undefined ? (
+          <Badge variant="outline" className="text-xs">
+            {eventCount} {eventCount === 1 ? "event" : "events"}
+          </Badge>
+        ) : null
+      }
+    >
+      {events === undefined ? (
+        <p className="text-sm text-muted-foreground">Loading activity...</p>
+      ) : events.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No activity recorded yet.
+        </p>
+      ) : (
+        <ol className="relative border-l border-border pl-5">
+          {events.map((event, idx) => {
+            const isComment = event.eventType.includes("comment");
+            return (
+              <li
+                key={event._id}
+                className={`relative pb-5 ${idx === events.length - 1 ? "pb-0" : ""}`}
+              >
+                {/* dot */}
+                <span
+                  className="absolute -left-[1.3125rem] flex size-6 items-center justify-center rounded-full border border-border bg-card"
+                  aria-hidden
                 >
-                  {/* dot */}
-                  <span
-                    className="absolute -left-[1.3125rem] flex size-6 items-center justify-center rounded-full border border-border bg-card"
-                    aria-hidden
-                  >
-                    {isComment ? (
-                      <MessageSquare className="size-3 text-muted-foreground" />
-                    ) : (
-                      <Clock className="size-3 text-muted-foreground" />
-                    )}
-                  </span>
+                  {isComment ? (
+                    <MessageSquare className="size-3 text-muted-foreground" />
+                  ) : (
+                    <Clock className="size-3 text-muted-foreground" />
+                  )}
+                </span>
 
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium text-foreground">
-                        {formatAuditEventLabel(event.eventType)}
-                      </span>
-                      <time
-                        className="text-xs text-muted-foreground"
-                        dateTime={new Date(event.createdAt).toISOString()}
-                      >
-                        {formatAuditTime(event.createdAt)}
-                      </time>
-                    </div>
-
-                    <p className="mt-1 text-sm font-medium text-foreground">
-                      {event.eventType === "booking.allocation_changed"
-                        ? "Room allocation updated"
-                        : event.message}
-                    </p>
-
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {event.actorName ?? "System"}
-                      {event.actorEmail ? ` \u00b7 ${event.actorEmail}` : ""}
-                    </p>
-
-                    <TimelineDetails event={event} rooms={rooms} />
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium text-foreground">
+                      {formatAuditEventLabel(event.eventType)}
+                    </span>
+                    <time
+                      className="text-xs text-muted-foreground"
+                      dateTime={new Date(event.createdAt).toISOString()}
+                    >
+                      {formatAuditTime(event.createdAt)}
+                    </time>
                   </div>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </CardContent>
-    </Card>
+
+                  <p className="mt-1 text-sm font-medium text-foreground">
+                    {event.eventType === "booking.allocation_changed"
+                      ? "Room allocation updated"
+                      : event.message}
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {event.actorName ?? "System"}
+                    {event.actorEmail ? ` \u00b7 ${event.actorEmail}` : ""}
+                  </p>
+
+                  <TimelineDetails event={event} rooms={rooms} />
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </CollapsibleCard>
   );
 }
 
@@ -1232,397 +1284,366 @@ export function RequestDetail({
           {/* -------------------------------------------------------------- */}
           {/* Booking overview                                                 */}
           {/* -------------------------------------------------------------- */}
-          <Card>
-            <CardHeader className="border-b pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                <Info className="size-4 text-muted-foreground" aria-hidden />
-                Booking overview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Requester
-                  </dt>
-                  <dd className="mt-1 text-sm font-medium text-foreground">
-                    {request.requesterName}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Email
-                  </dt>
-                  <dd className="mt-1 text-sm text-foreground">
-                    {request.requesterEmail}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Phone
-                  </dt>
-                  <dd className="mt-1 text-sm text-foreground">
-                    {request.requesterPhone || (
-                      <span className="italic text-muted-foreground">
-                        Not provided
-                      </span>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Attendees
-                  </dt>
-                  <dd className="mt-1 text-sm font-medium text-foreground">
-                    {request.attendeeCount}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    CC emails
-                  </dt>
-                  <dd className="mt-1 text-sm text-foreground">
-                    {request.ccEmails.length ? (
-                      request.ccEmails.join(", ")
-                    ) : (
-                      <span className="italic text-muted-foreground">None</span>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Session duration
-                  </dt>
-                  <dd className="mt-1 text-sm font-medium text-foreground">
-                    {sessionLength !== null
-                      ? formatBookingDuration(sessionLength)
-                      : "Invalid"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Reserved room time
-                  </dt>
-                  <dd className="mt-1 text-sm font-medium text-foreground">
-                    {occupancyLength !== null
-                      ? formatBookingDuration(occupancyLength)
-                      : "Invalid"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Room request mode
-                  </dt>
-                  <dd className="mt-1 text-sm font-medium text-foreground">
-                    {request.roomSelectionMode === "SpecificRooms"
-                      ? "Specific rooms"
-                      : "Room type quantity"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-muted-foreground">
-                    Rooms
-                  </dt>
-                  <dd className="mt-1 text-sm text-foreground">
-                    {formatRooms(request)}
-                  </dd>
-                </div>
-              </dl>
+          <CollapsibleCard title="Booking overview" icon={Info} defaultOpen={true}>
+            <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Requester
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
+                  {request.requesterName}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Email
+                </dt>
+                <dd className="mt-1 text-sm text-foreground">
+                  {request.requesterEmail}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Phone
+                </dt>
+                <dd className="mt-1 text-sm text-foreground">
+                  {request.requesterPhone || (
+                    <span className="italic text-muted-foreground">
+                      Not provided
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Attendees
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
+                  {request.attendeeCount}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  CC emails
+                </dt>
+                <dd className="mt-1 text-sm text-foreground">
+                  {request.ccEmails.length ? (
+                    request.ccEmails.join(", ")
+                  ) : (
+                    <span className="italic text-muted-foreground">None</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Session duration
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
+                  {sessionLength !== null
+                    ? formatBookingDuration(sessionLength)
+                    : "Invalid"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Reserved room time
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
+                  {occupancyLength !== null
+                    ? formatBookingDuration(occupancyLength)
+                    : "Invalid"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Room request mode
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
+                  {request.roomSelectionMode === "SpecificRooms"
+                    ? "Specific rooms"
+                    : "Room type quantity"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Rooms
+                </dt>
+                <dd className="mt-1 text-sm text-foreground">
+                  {formatRooms(request)}
+                </dd>
+              </div>
+            </dl>
 
-              {/* Details / notes */}
-              {request.details ? (
-                <>
-                  <Separator className="my-4" />
-                  <div>
-                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                      Additional details
-                    </p>
-                    <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-foreground leading-relaxed">
-                      {request.details}
-                    </p>
-                  </div>
-                </>
-              ) : null}
-            </CardContent>
-          </Card>
+            {/* Details / notes */}
+            {request.details ? (
+              <>
+                <Separator className="my-4" />
+                <div>
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    Additional details
+                  </p>
+                  <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-foreground leading-relaxed">
+                    {request.details}
+                  </p>
+                </div>
+              </>
+            ) : null}
+          </CollapsibleCard>
 
           {/* -------------------------------------------------------------- */}
           {/* Session timings                                                  */}
           {/* -------------------------------------------------------------- */}
-          <Card>
-            <CardHeader className="border-b pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                <CalendarDays className="size-4 text-muted-foreground" aria-hidden />
-                Session timings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <ol className="grid gap-2">
-                {request.blocks.map(
-                  (block: { label?: string; start: string; end: string }) => (
-                    <li
-                      key={`${block.label}-${block.start}`}
-                      className="flex items-start gap-3 rounded-lg bg-muted/40 px-3 py-2.5 text-sm"
-                    >
-                      <span className="mt-0.5 min-w-[4.5rem] text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {block.label ?? "Block"}
-                      </span>
-                      <span className="font-medium text-foreground">
-                        {formatBlockTime(block, request.timezone)}
-                      </span>
-                    </li>
-                  )
-                )}
-              </ol>
-            </CardContent>
-          </Card>
+          <CollapsibleCard title="Session timings" icon={CalendarDays} defaultOpen={true}>
+            <ol className="grid gap-2">
+              {request.blocks.map(
+                (block: { label?: string; start: string; end: string }) => (
+                  <li
+                    key={`${block.label}-${block.start}`}
+                    className="flex items-start gap-3 rounded-lg bg-muted/40 px-3 py-2.5 text-sm"
+                  >
+                    <span className="mt-0.5 min-w-[4.5rem] text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {block.label ?? "Block"}
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {formatBlockTime(block, request.timezone)}
+                    </span>
+                  </li>
+                )
+              )}
+            </ol>
+          </CollapsibleCard>
 
           {/* -------------------------------------------------------------- */}
           {/* Room requests + allocation                                       */}
           {/* -------------------------------------------------------------- */}
-          <Card>
-            <CardHeader className="border-b pb-3">
-              <CardTitle className="flex items-center justify-between gap-2 text-sm font-semibold">
-                <span className="flex items-center gap-2">
-                  <Search className="size-4 text-muted-foreground" aria-hidden />
-                  Room allocation
-                </span>
-                <Badge variant="outline" className="text-xs font-normal">
-                  {formatAllocationStatus(request.allocationStatus)}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <div className="grid gap-3">
-                {/* Specific rooms requested */}
-                {request.requestedRooms?.length ? (
-                  <div>
-                    <p className="mb-2 text-xs font-medium text-muted-foreground">
-                      Requested rooms
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {request.requestedRooms.map(
-                        (room: { _id: string; name: string; code: string; capacity: number }) => (
-                          <Badge key={room._id} variant="outline" className="text-xs">
-                            {room.name} ({room.code}) &middot; cap {room.capacity}
-                          </Badge>
-                        )
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Room type quantities requested */}
-                {request.roomTypeRequestDetails?.length ? (
-                  <div>
-                    <p className="mb-2 text-xs font-medium text-muted-foreground">
-                      Requested room types
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {request.roomTypeRequestDetails.map(
-                        (item: { roomTypeId: string; quantity: number; roomTypeName: string; defaultCapacity: number }) => (
-                          <Badge key={item.roomTypeId} variant="outline" className="text-xs">
-                            {item.quantity}&times;{" "}
-                            {item.roomTypeName}
-                            {item.quantity === 1 ? "" : "s"} &middot; ~
-                            {item.quantity * item.defaultCapacity} cap
-                          </Badge>
-                        )
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Assigned rooms (read-only view for non-staff) */}
-                {!isStaffOrAbove &&
-                (request.assignedRooms?.length ||
-                  request.assignedRoomIds?.length) ? (
-                  <div>
-                    <p className="mb-2 text-xs font-medium text-muted-foreground">
-                      Assigned rooms
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(request.assignedRooms ?? []).map(
-                        (room: { _id: string; code: string; name: string }) => (
-                          <Badge key={room._id} variant="outline" className="text-xs">
-                            {formatRoomChip(room)}
-                          </Badge>
-                        )
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* No rooms state (non-staff) */}
-                {!isStaffOrAbove &&
-                !request.requestedRooms?.length &&
-                !request.roomTypeRequestDetails?.length &&
-                !request.assignedRooms?.length ? (
-                  <p className="text-sm italic text-muted-foreground">
-                    No room information available.
+          <CollapsibleCard
+            title="Room allocation"
+            icon={Search}
+            defaultOpen={!(request.assignedRoomIds?.length ?? 0)}
+            badge={
+              <Badge variant="outline" className="text-xs font-normal">
+                {formatAllocationStatus(request.allocationStatus)}
+              </Badge>
+            }
+          >
+            <div className="grid gap-3">
+              {/* Specific rooms requested */}
+              {request.requestedRooms?.length ? (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Requested rooms
                   </p>
-                ) : null}
-              </div>
-
-              {/* Staff/admin: allocation management panel */}
-              {!publicView && auth && isStaffOrAbove ? (
-                <ManualAllocationPanel
-                  key={`${request._id}-${request.updatedAt}`}
-                  request={request}
-                  rooms={rooms}
-                  tenantSlug={tenantSlug}
-                  auth={auth}
-                />
+                  <div className="flex flex-wrap gap-1.5">
+                    {request.requestedRooms.map(
+                      (room: { _id: string; name: string; code: string; capacity: number }) => (
+                        <Badge key={room._id} variant="outline" className="text-xs">
+                          {room.name} ({room.code}) &middot; cap {room.capacity}
+                        </Badge>
+                      )
+                    )}
+                  </div>
+                </div>
               ) : null}
-            </CardContent>
-          </Card>
+
+              {/* Room type quantities requested */}
+              {request.roomTypeRequestDetails?.length ? (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Requested room types
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {request.roomTypeRequestDetails.map(
+                      (item: { roomTypeId: string; quantity: number; roomTypeName: string; defaultCapacity: number }) => (
+                        <Badge key={item.roomTypeId} variant="outline" className="text-xs">
+                          {item.quantity}&times;{" "}
+                          {item.roomTypeName}
+                          {item.quantity === 1 ? "" : "s"} &middot; ~
+                          {item.quantity * item.defaultCapacity} cap
+                        </Badge>
+                      )
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Assigned rooms (read-only view for non-staff) */}
+              {!isStaffOrAbove &&
+              (request.assignedRooms?.length ||
+                request.assignedRoomIds?.length) ? (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Assigned rooms
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(request.assignedRooms ?? []).map(
+                      (room: { _id: string; code: string; name: string }) => (
+                        <Badge key={room._id} variant="outline" className="text-xs">
+                          {formatRoomChip(room)}
+                        </Badge>
+                      )
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* No rooms state (non-staff) */}
+              {!isStaffOrAbove &&
+              !request.requestedRooms?.length &&
+              !request.roomTypeRequestDetails?.length &&
+              !request.assignedRooms?.length ? (
+                <p className="text-sm italic text-muted-foreground">
+                  No room information available.
+                </p>
+              ) : null}
+            </div>
+
+            {/* Staff/admin: allocation management panel */}
+            {!publicView && auth && isStaffOrAbove ? (
+              <ManualAllocationPanel
+                key={`${request._id}-${request.updatedAt}`}
+                request={request}
+                rooms={rooms}
+                tenantSlug={tenantSlug}
+                auth={auth}
+              />
+            ) : null}
+          </CollapsibleCard>
 
           {/* -------------------------------------------------------------- */}
           {/* Custom form inputs                                               */}
           {/* -------------------------------------------------------------- */}
           {request.customInputs.length > 0 ? (
-            <Card>
-              <CardHeader className="border-b pb-3">
-                <CardTitle className="text-sm font-semibold">
-                  Custom form inputs
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  {request.customInputs.map(
-                    (field: { fieldId: string; label: string; value: unknown }) => (
-                      <div key={field.fieldId}>
-                        <dt className="text-xs font-medium text-muted-foreground">
-                          {field.label}
-                        </dt>
-                        <dd className="mt-1 text-sm text-foreground">
-                          {field.value !== null &&
-                          field.value !== undefined &&
-                          String(field.value) !== "" ? (
-                            String(field.value)
-                          ) : (
-                            <span className="italic text-muted-foreground">
-                              Not provided
-                            </span>
-                          )}
-                        </dd>
-                      </div>
-                    )
-                  )}
-                </dl>
-              </CardContent>
-            </Card>
+            <CollapsibleCard title="Custom form inputs" defaultOpen={true}>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                {request.customInputs.map(
+                  (field: { fieldId: string; label: string; value: unknown }) => (
+                    <div key={field.fieldId}>
+                      <dt className="text-xs font-medium text-muted-foreground">
+                        {field.label}
+                      </dt>
+                      <dd className="mt-1 text-sm text-foreground">
+                        {field.value !== null &&
+                        field.value !== undefined &&
+                        String(field.value) !== "" ? (
+                          String(field.value)
+                        ) : (
+                          <span className="italic text-muted-foreground">
+                            Not provided
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  )
+                )}
+              </dl>
+            </CollapsibleCard>
           ) : null}
 
           {/* -------------------------------------------------------------- */}
           {/* Comments                                                         */}
           {/* -------------------------------------------------------------- */}
-          <Card>
-            <CardHeader className="border-b pb-3">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <MessageSquare className="size-4 text-muted-foreground" aria-hidden />
-                  Comments
-                </CardTitle>
-                {request.comments.length > 0 ? (
-                  <Badge variant="outline" className="text-xs">
-                    {request.comments.length}
-                  </Badge>
-                ) : null}
-              </div>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {request.comments.length > 0 ? (
-                <ol className="grid gap-3">
-                  {request.comments.map(
-                    (comment: {
-                      _id: string;
-                      bodyMarkdown: string;
-                      authorName?: string;
-                      createdAt: number;
-                      editedAt?: number;
-                    }) => (
-                      <li
-                        key={comment._id}
-                        className="rounded-xl border border-border bg-muted/30 p-4"
-                      >
-                        <p className="text-sm leading-relaxed text-foreground">
-                          {comment.bodyMarkdown}
-                        </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span className="font-medium">
-                            {comment.authorName ?? "Unknown"}
-                          </span>
-                          <span aria-hidden>&middot;</span>
-                          <time
-                            dateTime={new Date(comment.createdAt).toISOString()}
-                          >
-                            {formatAuditTime(comment.createdAt)}
-                          </time>
-                          {comment.editedAt ? (
-                            <>
-                              <span aria-hidden>&middot;</span>
-                              <span>
-                                edited{" "}
-                                <time
-                                  dateTime={new Date(
-                                    comment.editedAt
-                                  ).toISOString()}
-                                >
-                                  {formatAuditTime(comment.editedAt)}
-                                </time>
-                              </span>
-                            </>
-                          ) : null}
-                        </div>
-                      </li>
-                    )
-                  )}
-                </ol>
-              ) : (
-                <p className="text-sm italic text-muted-foreground">
-                  No comments yet.
-                </p>
-              )}
+          <CollapsibleCard
+            title="Comments"
+            icon={MessageSquare}
+            defaultOpen={true}
+            badge={
+              request.comments.length > 0 ? (
+                <Badge variant="outline" className="text-xs">
+                  {request.comments.length}
+                </Badge>
+              ) : null
+            }
+          >
+            {request.comments.length > 0 ? (
+              <ol className="grid gap-3">
+                {request.comments.map(
+                  (comment: {
+                    _id: string;
+                    bodyMarkdown: string;
+                    authorName?: string;
+                    createdAt: number;
+                    editedAt?: number;
+                  }) => (
+                    <li
+                      key={comment._id}
+                      className="rounded-xl border border-border bg-muted/30 p-4"
+                    >
+                      <p className="text-sm leading-relaxed text-foreground">
+                        {comment.bodyMarkdown}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="font-medium">
+                          {comment.authorName ?? "Unknown"}
+                        </span>
+                        <span aria-hidden>&middot;</span>
+                        <time
+                          dateTime={new Date(comment.createdAt).toISOString()}
+                        >
+                          {formatAuditTime(comment.createdAt)}
+                        </time>
+                        {comment.editedAt ? (
+                          <>
+                            <span aria-hidden>&middot;</span>
+                            <span>
+                              edited{" "}
+                              <time
+                                dateTime={new Date(
+                                  comment.editedAt
+                                ).toISOString()}
+                              >
+                                {formatAuditTime(comment.editedAt)}
+                              </time>
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                )}
+              </ol>
+            ) : (
+              <p className="text-sm italic text-muted-foreground">
+                No comments yet.
+              </p>
+            )}
 
-              {!publicView ? (
-                <>
-                  {request.comments.length > 0 ? (
-                    <Separator className="my-4" />
-                  ) : null}
-                  <form onSubmit={onComment} className="grid gap-3">
-                    <label htmlFor="comment-body" className="sr-only">
-                      Add a comment
-                    </label>
-                    <Textarea
-                      id="comment-body"
-                      name="comment"
-                      placeholder="Add a comment..."
-                      className="min-h-24 text-sm"
+            {!publicView ? (
+              <>
+                {request.comments.length > 0 ? (
+                  <Separator className="my-4" />
+                ) : null}
+                <form onSubmit={onComment} className="grid gap-3">
+                  <label htmlFor="comment-body" className="sr-only">
+                    Add a comment
+                  </label>
+                  <Textarea
+                    id="comment-body"
+                    name="comment"
+                    placeholder="Add a comment..."
+                    className="min-h-24 text-sm"
+                    disabled={commentBusy}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
                       disabled={commentBusy}
-                    />
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="submit"
-                        size="sm"
-                        disabled={commentBusy}
-                      >
-                        {commentBusy ? (
-                          <LoaderCircle
-                            className="size-3.5 animate-spin"
-                            aria-hidden
-                          />
-                        ) : (
-                          <MessageSquare className="size-3.5" aria-hidden />
-                        )}
-                        Add comment
-                      </Button>
-                    </div>
-                  </form>
-                </>
-              ) : null}
-            </CardContent>
-          </Card>
+                    >
+                      {commentBusy ? (
+                        <LoaderCircle
+                          className="size-3.5 animate-spin"
+                          aria-hidden
+                        />
+                      ) : (
+                        <MessageSquare className="size-3.5" aria-hidden />
+                      )}
+                      Add comment
+                    </Button>
+                  </div>
+                </form>
+              </>
+            ) : null}
+          </CollapsibleCard>
 
           {/* -------------------------------------------------------------- */}
           {/* Activity timeline                                                */}
@@ -1641,346 +1662,331 @@ export function RequestDetail({
           {/* Workflow actions — staff/admin/developer only                    */}
           {/* -------------------------------------------------------------- */}
           {!publicView && isStaffOrAbove ? (
-            <Card>
-              <CardHeader className="border-b pb-3">
-                <CardTitle className="text-sm font-semibold">
-                  Workflow actions
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4">
-                {hasConflicts ? (
-                  <div
-                    className="mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
-                    role="alert"
-                  >
-                    <AlertTriangle
-                      className="mt-0.5 size-4 shrink-0"
-                      aria-hidden
-                    />
-                    <p>
-                      Availability warnings detected. Approval may require a
-                      staff override.
-                    </p>
-                  </div>
-                ) : null}
-
-                <div className="grid gap-2">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          onClick={approveBooking}
-                          disabled={statusBusy}
-                          className="w-full"
-                        >
-                          {statusBusy ? (
-                            <LoaderCircle
-                              className="size-4 animate-spin"
-                              aria-hidden
-                            />
-                          ) : (
-                            <CheckCircle className="size-4" aria-hidden />
-                          )}
-                          Approve
-                        </Button>
-                      }
-                    />
-                    <TooltipContent side="left">
-                      Approve and confirm the booking. A room must be assigned
-                      first.
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => openReasonDialog("Declined")}
-                          disabled={statusBusy}
-                          className="w-full"
-                        >
-                          Decline
-                        </Button>
-                      }
-                    />
-                    <TooltipContent side="left">
-                      Decline this booking request with an optional reason.
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => openReasonDialog("Cancelled")}
-                          disabled={statusBusy}
-                          className="w-full"
-                        >
-                          Cancel
-                        </Button>
-                      }
-                    />
-                    <TooltipContent side="left">
-                      Cancel this booking with an optional reason.
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Separator />
-
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() =>
-                            void runStatusUpdate({ status: "Pending" })
-                          }
-                          disabled={statusBusy}
-                          className="w-full"
-                        >
-                          Move to Pending
-                        </Button>
-                      }
-                    />
-                    <TooltipContent side="left">
-                      Return the booking to Pending for further review.
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={completeBooking}
-                          disabled={statusBusy}
-                          className="w-full"
-                        >
-                          Mark Completed
-                        </Button>
-                      }
-                    />
-                    <TooltipContent side="left">
-                      Mark as completed. Requires a staff override if the
-                      booking has not yet ended.
-                    </TooltipContent>
-                  </Tooltip>
+            <CollapsibleCard title="Workflow actions" defaultOpen={true}>
+              {hasConflicts ? (
+                <div
+                  className="mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
+                  role="alert"
+                >
+                  <AlertTriangle
+                    className="mt-0.5 size-4 shrink-0"
+                    aria-hidden
+                  />
+                  <p>
+                    Availability warnings detected. Approval may require a
+                    staff override.
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+              ) : null}
+
+              <div className="grid gap-2">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        onClick={approveBooking}
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        {statusBusy ? (
+                          <LoaderCircle
+                            className="size-4 animate-spin"
+                            aria-hidden
+                          />
+                        ) : (
+                          <CheckCircle className="size-4" aria-hidden />
+                        )}
+                        Approve
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Approve and confirm the booking. A room must be assigned
+                    first.
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => openReasonDialog("Declined")}
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        Decline
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Decline this booking request with an optional reason.
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => openReasonDialog("Cancelled")}
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        Cancel
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Cancel this booking with an optional reason.
+                  </TooltipContent>
+                </Tooltip>
+
+                <Separator />
+
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          void runStatusUpdate({ status: "Pending" })
+                        }
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        Move to Pending
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Return the booking to Pending for further review.
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={completeBooking}
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        Mark Completed
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Mark as completed. Requires a staff override if the
+                    booking has not yet ended.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </CollapsibleCard>
           ) : null}
 
           {/* -------------------------------------------------------------- */}
           {/* Availability conflicts (staff/admin only)                       */}
           {/* -------------------------------------------------------------- */}
           {!publicView ? (
-            <Card>
-              <CardHeader className="border-b pb-3">
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-sm font-semibold">
-                    Availability
-                  </CardTitle>
-                  {request.conflictMetadata?.highestSeverity ? (
-                    <Badge
-                      variant="outline"
-                      className={`text-xs ${severityClass(request.conflictMetadata.highestSeverity)}`}
-                    >
-                      {severityLabel(
-                        request.conflictMetadata.highestSeverity
-                      )}
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="border-primary/30 bg-primary/10 text-primary text-xs"
-                    >
-                      Clear
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4">
-                {request.conflictMetadata?.summary ? (
-                  <p className="mb-3 text-sm text-muted-foreground">
-                    {request.conflictMetadata.summary}
-                  </p>
-                ) : null}
+            <CollapsibleCard
+              title="Availability"
+              defaultOpen={true}
+              badge={
+                request.conflictMetadata?.highestSeverity ? (
+                  <Badge
+                    variant="outline"
+                    className={`text-xs ${severityClass(request.conflictMetadata.highestSeverity)}`}
+                  >
+                    {severityLabel(
+                      request.conflictMetadata.highestSeverity
+                    )}
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="border-primary/30 bg-primary/10 text-primary text-xs"
+                  >
+                    Clear
+                  </Badge>
+                )
+              }
+            >
+              {request.conflictMetadata?.summary ? (
+                <p className="mb-3 text-sm text-muted-foreground">
+                  {request.conflictMetadata.summary}
+                </p>
+              ) : null}
 
-                {request.conflictMetadata?.conflicts.length ? (
-                  <div className="grid gap-2" role="list" aria-label="Conflicts">
-                    {request.conflictMetadata.conflicts.map(
-                      (conflict: {
-                        type: string;
-                        severity: string;
-                        message: string;
-                        roomCode?: string;
-                        roomName?: string;
-                        roomTypeName?: string;
-                        campusName?: string;
-                        blockedReason?: string;
-                        conflictingRequestId?: string;
-                        requestedQuantity?: number;
-                        availableQuantity?: number;
-                        missingQuantity?: number;
-                        unavailableRooms?: Array<{ code: string; reason: string }>;
-                      }, index: number) => (
-                        <div
-                          key={`${conflict.type}-${index}`}
-                          className={`rounded-xl border p-3 text-sm ${severityClass(conflict.severity)}`}
-                          role="listitem"
-                        >
-                          <div className="flex items-start gap-2">
-                            {conflict.severity === "informational" ? (
-                              <Info
-                                className="mt-0.5 size-4 shrink-0"
-                                aria-hidden
-                              />
-                            ) : (
-                              <AlertTriangle
-                                className="mt-0.5 size-4 shrink-0"
-                                aria-hidden
-                              />
-                            )}
-                            <div className="min-w-0">
-                              <p className="font-medium">
-                                {conflict.message}
-                              </p>
-                              <dl className="mt-2 grid gap-0.5 text-xs opacity-85">
+              {request.conflictMetadata?.conflicts.length ? (
+                <div className="grid gap-2" role="list" aria-label="Conflicts">
+                  {request.conflictMetadata.conflicts.map(
+                    (conflict: {
+                      type: string;
+                      severity: string;
+                      message: string;
+                      roomCode?: string;
+                      roomName?: string;
+                      roomTypeName?: string;
+                      campusName?: string;
+                      blockedReason?: string;
+                      conflictingRequestId?: string;
+                      requestedQuantity?: number;
+                      availableQuantity?: number;
+                      missingQuantity?: number;
+                      unavailableRooms?: Array<{ code: string; reason: string }>;
+                    }, index: number) => (
+                      <div
+                        key={`${conflict.type}-${index}`}
+                        className={`rounded-xl border p-3 text-sm ${severityClass(conflict.severity)}`}
+                        role="listitem"
+                      >
+                        <div className="flex items-start gap-2">
+                          {conflict.severity === "informational" ? (
+                            <Info
+                              className="mt-0.5 size-4 shrink-0"
+                              aria-hidden
+                            />
+                          ) : (
+                            <AlertTriangle
+                              className="mt-0.5 size-4 shrink-0"
+                              aria-hidden
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium">
+                              {conflict.message}
+                            </p>
+                            <dl className="mt-2 grid gap-0.5 text-xs opacity-85">
+                              <div>
+                                <dt className="sr-only">Type</dt>
+                                <dd>Type: {conflict.type}</dd>
+                              </div>
+                              {conflict.roomCode ? (
                                 <div>
-                                  <dt className="sr-only">Type</dt>
-                                  <dd>Type: {conflict.type}</dd>
+                                  <dt className="sr-only">Room</dt>
+                                  <dd>
+                                    Room: {conflict.roomCode}{" "}
+                                    {conflict.roomName
+                                      ? `(${conflict.roomName})`
+                                      : ""}
+                                  </dd>
                                 </div>
-                                {conflict.roomCode ? (
-                                  <div>
-                                    <dt className="sr-only">Room</dt>
-                                    <dd>
-                                      Room: {conflict.roomCode}{" "}
-                                      {conflict.roomName
-                                        ? `(${conflict.roomName})`
-                                        : ""}
-                                    </dd>
-                                  </div>
-                                ) : null}
-                                {conflict.roomTypeName ? (
-                                  <div>
-                                    <dt className="sr-only">Room type</dt>
-                                    <dd>
-                                      Room type: {conflict.roomTypeName}
-                                    </dd>
-                                  </div>
-                                ) : null}
-                                {conflict.campusName ? (
-                                  <div>
-                                    <dt className="sr-only">Campus</dt>
-                                    <dd>Campus: {conflict.campusName}</dd>
-                                  </div>
-                                ) : null}
-                                {conflict.blockedReason ? (
-                                  <div>
-                                    <dt className="sr-only">Blocked reason</dt>
-                                    <dd>
-                                      Blocked: {conflict.blockedReason}
-                                    </dd>
-                                  </div>
-                                ) : null}
-                                {conflict.requestedQuantity !== undefined ? (
-                                  <div>
-                                    <dt className="sr-only">
-                                      Requested quantity
-                                    </dt>
-                                    <dd>
-                                      Requested: {conflict.requestedQuantity}
-                                    </dd>
-                                  </div>
-                                ) : null}
-                                {conflict.availableQuantity !== undefined ? (
-                                  <div>
-                                    <dt className="sr-only">
-                                      Available quantity
-                                    </dt>
-                                    <dd>
-                                      Available: {conflict.availableQuantity}
-                                    </dd>
-                                  </div>
-                                ) : null}
-                                {conflict.missingQuantity !== undefined ? (
-                                  <div>
-                                    <dt className="sr-only">
-                                      Missing quantity
-                                    </dt>
-                                    <dd>
-                                      Missing: {conflict.missingQuantity}
-                                    </dd>
-                                  </div>
-                                ) : null}
-                                {conflict.unavailableRooms?.length ? (
-                                  <div>
-                                    <dt className="sr-only">
-                                      Unavailable rooms
-                                    </dt>
-                                    <dd>
-                                      Unavailable:{" "}
-                                      {conflict.unavailableRooms
-                                        .map(
-                                          (r) => `${r.code} (${r.reason})`
-                                        )
-                                        .join(", ")}
-                                    </dd>
-                                  </div>
-                                ) : null}
-                              </dl>
-                            </div>
+                              ) : null}
+                              {conflict.roomTypeName ? (
+                                <div>
+                                  <dt className="sr-only">Room type</dt>
+                                  <dd>
+                                    Room type: {conflict.roomTypeName}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.campusName ? (
+                                <div>
+                                  <dt className="sr-only">Campus</dt>
+                                  <dd>Campus: {conflict.campusName}</dd>
+                                </div>
+                              ) : null}
+                              {conflict.blockedReason ? (
+                                <div>
+                                  <dt className="sr-only">Blocked reason</dt>
+                                  <dd>
+                                    Blocked: {conflict.blockedReason}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.requestedQuantity !== undefined ? (
+                                <div>
+                                  <dt className="sr-only">
+                                    Requested quantity
+                                  </dt>
+                                  <dd>
+                                    Requested: {conflict.requestedQuantity}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.availableQuantity !== undefined ? (
+                                <div>
+                                  <dt className="sr-only">
+                                    Available quantity
+                                  </dt>
+                                  <dd>
+                                    Available: {conflict.availableQuantity}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.missingQuantity !== undefined ? (
+                                <div>
+                                  <dt className="sr-only">
+                                    Missing quantity
+                                  </dt>
+                                  <dd>
+                                    Missing: {conflict.missingQuantity}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.unavailableRooms?.length ? (
+                                <div>
+                                  <dt className="sr-only">
+                                    Unavailable rooms
+                                  </dt>
+                                  <dd>
+                                    Unavailable:{" "}
+                                    {conflict.unavailableRooms
+                                      .map(
+                                        (r) => `${r.code} (${r.reason})`
+                                      )
+                                      .join(", ")}
+                                  </dd>
+                                </div>
+                              ) : null}
+                            </dl>
                           </div>
                         </div>
-                      )
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
-                    <CheckCircle className="size-4 shrink-0 text-primary" aria-hidden />
-                    No conflicts detected against approved bookings, pending
-                    bookings, or blocked periods.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      </div>
+                    )
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
+                  <CheckCircle className="size-4 shrink-0 text-primary" aria-hidden />
+                  No conflicts detected against approved bookings, pending
+                  bookings, or blocked periods.
+                </div>
+              )}
+            </CollapsibleCard>
           ) : null}
 
           {/* -------------------------------------------------------------- */}
           {/* Files                                                            */}
           {/* -------------------------------------------------------------- */}
-          <Card>
-            <CardHeader className="border-b pb-3">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <FileText className="size-4 text-muted-foreground" aria-hidden />
-                  Files
-                </CardTitle>
-                <Badge variant="outline" className="text-xs">
-                  {request.attachmentStorageIds.length}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {request.attachmentStorageIds.length === 0 ? (
-                <p className="text-sm italic text-muted-foreground">
-                  No attachments uploaded.
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {request.attachmentStorageIds.length} attachment
-                  {request.attachmentStorageIds.length === 1 ? "" : "s"}.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          <CollapsibleCard
+            title="Files"
+            icon={FileText}
+            defaultOpen={true}
+            badge={
+              <Badge variant="outline" className="text-xs">
+                {request.attachmentStorageIds.length}
+              </Badge>
+            }
+          >
+            {request.attachmentStorageIds.length === 0 ? (
+              <p className="text-sm italic text-muted-foreground">
+                No attachments uploaded.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {request.attachmentStorageIds.length} attachment
+                {request.attachmentStorageIds.length === 1 ? "" : "s"}.
+              </p>
+            )}
+          </CollapsibleCard>
         </div>
       </div>
 
