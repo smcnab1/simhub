@@ -1699,3 +1699,45 @@ export const internalRoomTypes = query({
     return selectableRoomTypes.filter((roomType): roomType is Doc<"roomTypes"> => roomType !== null);
   },
 });
+
+/**
+ * Staff triage query: returns all booking requests for a tenant, enriched
+ * with assigned room names, allocation status, and stored conflict metadata.
+ * Supports optional status filter so the client can switch tabs without
+ * re-fetching everything.
+ */
+export const listRequestsForTriage = query({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    status: v.optional(
+      v.union(
+        v.literal("Pending"),
+        v.literal("Approved"),
+        v.literal("Confirmed"),
+        v.literal("Completed"),
+        v.literal("Declined"),
+        v.literal("Cancelled")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
+
+    const requests = args.status
+      ? await ctx.db
+          .query("bookingRequests")
+          .withIndex("by_tenant_status", (q) =>
+            q.eq("tenantId", tenant._id).eq("status", args.status!)
+          )
+          .order("desc")
+          .collect()
+      : await ctx.db
+          .query("bookingRequests")
+          .withIndex("by_tenant_created", (q) => q.eq("tenantId", tenant._id))
+          .order("desc")
+          .collect();
+
+    return Promise.all(requests.map((request) => withAssignedRooms(ctx, request)));
+  },
+});
