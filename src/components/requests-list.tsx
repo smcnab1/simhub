@@ -6,7 +6,7 @@ import { useDashboardAuth } from "@/components/dashboard-auth";
 import { RequestCard, SectionHeader } from "@/components/ui";
 import { formatRequestDate, formatRooms } from "@/lib/format";
 
-const statuses = ["Pending", "Approved", "Completed", "Declined", "Cancelled"];
+const statuses = ["Pending", "Approved", "Confirmed", "Completed", "Declined", "Cancelled"];
 
 export function RequestsList() {
   const auth = useDashboardAuth();

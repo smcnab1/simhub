@@ -11,10 +11,7 @@ import {
   type ConvexAuthContext,
 } from "./authz";
 import {
-  allocateRoomsByType,
-  checkAvailabilityConflicts,
   evaluateBookingNoticeWindow,
-  hasBookingConflict,
   bookingBlocksFromSessionWindow,
   roomTypeBufferMinutes,
   sessionBookingRange,
@@ -23,14 +20,22 @@ import {
   validateSessionWithinOpeningHours,
   validateRoomSelectionState,
   validateMaxBookingDuration,
-  type AvailabilityCheckResult,
   type BookingNoticeEvaluation,
 } from "../src/lib/booking-logic";
+import {
+  autoAllocateRooms,
+  checkAvailabilityConflicts,
+  type AvailabilityCheckResult,
+  type AvailabilityCheckInput,
+} from "../src/lib/conflict-engine";
 import { campusIsActive } from "../src/lib/campus";
 
 async function withAssignedRooms(ctx: QueryCtx, request: Doc<"bookingRequests">) {
   const rooms = await Promise.all(request.assignedRoomIds.map((roomId: Id<"rooms">) => ctx.db.get(roomId)));
   const assignedRooms = rooms.filter((room): room is Doc<"rooms"> => room !== null);
+  const allocationUpdatedBy = request.allocationUpdatedByUserId
+    ? await ctx.db.get(request.allocationUpdatedByUserId)
+    : null;
   const requestedRooms = await Promise.all(
     (request.requestedRoomIds ?? []).map((roomId) => ctx.db.get(roomId))
   );
@@ -49,6 +54,14 @@ async function withAssignedRooms(ctx: QueryCtx, request: Doc<"bookingRequests">)
   return {
     ...request,
     assignedRooms: assignedRooms.map((room) => ({ _id: room._id, code: room.code, name: room.name })),
+    allocationUpdatedBy: allocationUpdatedBy
+      ? {
+          _id: allocationUpdatedBy._id,
+          name: allocationUpdatedBy.name,
+          email: allocationUpdatedBy.email,
+          role: allocationUpdatedBy.role,
+        }
+      : null,
     requestedRooms: requestedRooms
       .filter((room): room is Doc<"rooms"> => room !== null)
       .map((room) => ({
@@ -313,18 +326,18 @@ function availabilityWithNoticeEvaluation(
   };
 }
 
-async function computeAvailability(
+async function availabilityResources(
   ctx: QueryCtx | MutationCtx,
   tenantId: Id<"tenants">,
-  args: {
-    roomSelectionMode?: "SpecificRooms" | "RoomTypeQuantity";
-    blocks: Array<{ start: string; end: string }>;
-    roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>;
-    requestedRoomIds?: Id<"rooms">[];
-    excludeRequestId?: Id<"bookingRequests">;
-  }
-): Promise<AvailabilityCheckResult> {
-  const [rooms, roomTypes, campuses, approved, pending, blockedTimes] =
+  excludeRequestId?: Id<"bookingRequests">,
+  options?: { includeInactiveRooms?: boolean }
+): Promise<
+  Pick<
+    AvailabilityCheckInput,
+    "rooms" | "roomTypes" | "campuses" | "bookings" | "blockedTimes"
+  >
+> {
+  const [rooms, roomTypes, campuses, approved, confirmed, completed, pending, blockedTimes] =
     await Promise.all([
       ctx.db
         .query("rooms")
@@ -347,6 +360,18 @@ async function computeAvailability(
       ctx.db
         .query("bookingRequests")
         .withIndex("by_tenant_status", (q) =>
+          q.eq("tenantId", tenantId).eq("status", "Confirmed")
+        )
+        .collect(),
+      ctx.db
+        .query("bookingRequests")
+        .withIndex("by_tenant_status", (q) =>
+          q.eq("tenantId", tenantId).eq("status", "Completed")
+        )
+        .collect(),
+      ctx.db
+        .query("bookingRequests")
+        .withIndex("by_tenant_status", (q) =>
           q.eq("tenantId", tenantId).eq("status", "Pending")
         )
         .collect(),
@@ -355,38 +380,23 @@ async function computeAvailability(
         .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
         .collect(),
     ]);
-
   const activeCampusIds = new Set(
     campuses.filter(campusIsActive).map((campus) => campus._id)
   );
-  const selectedRooms = args.requestedRoomIds
-    ? rooms.filter((room) => args.requestedRoomIds?.includes(room._id))
-    : [];
-  const availabilityRoomTypeRequests =
-    args.roomSelectionMode === "SpecificRooms"
-      ? Object.entries(
-          selectedRooms.reduce<Record<string, number>>((counts, room) => {
-            counts[room.roomTypeId] = (counts[room.roomTypeId] ?? 0) + 1;
-            return counts;
-          }, {})
-        ).map(([roomTypeId, quantity]) => ({ roomTypeId, quantity }))
-      : args.roomTypeRequests;
   const selectableRooms = rooms.filter(
-    (room) => room.active && (!room.campusId || activeCampusIds.has(room.campusId))
+    (room) =>
+      (options?.includeInactiveRooms || room.active) &&
+      (!room.campusId || activeCampusIds.has(room.campusId))
   );
   const selectableRoomTypes = roomTypes.filter(
     (roomType) =>
       roomType.active && (!roomType.campusId || activeCampusIds.has(roomType.campusId))
   );
-  const visibleBookings = [...approved, ...pending].filter(
-    (request) => request._id !== args.excludeRequestId
+  const visibleBookings = [...approved, ...confirmed, ...completed, ...pending].filter(
+    (request) => request._id !== excludeRequestId
   );
 
-  return checkAvailabilityConflicts({
-    roomSelectionMode: args.roomSelectionMode,
-    blocks: args.blocks,
-    roomTypeRequests: availabilityRoomTypeRequests,
-    requestedRoomIds: args.requestedRoomIds,
+  return {
     rooms: selectableRooms.map((room) => ({
       id: room._id,
       code: room.code,
@@ -418,6 +428,64 @@ async function computeAvailability(
       end: blockedTime.end,
       reason: blockedTime.reason,
     })),
+  };
+}
+
+async function computeAvailability(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  args: {
+    roomSelectionMode?: "SpecificRooms" | "RoomTypeQuantity";
+    blocks: Array<{ start: string; end: string }>;
+    roomTypeRequests: Array<{ roomTypeId: Id<"roomTypes">; quantity: number }>;
+    requestedRoomIds?: Id<"rooms">[];
+    excludeRequestId?: Id<"bookingRequests">;
+  }
+): Promise<AvailabilityCheckResult> {
+  const resources = await availabilityResources(
+    ctx,
+    tenantId,
+    args.excludeRequestId
+  );
+  const requestedRoomIdSet = new Set<string>(args.requestedRoomIds ?? []);
+  const selectedRooms = args.requestedRoomIds
+    ? resources.rooms.filter((room) => requestedRoomIdSet.has(room.id))
+    : [];
+  const availabilityRoomTypeRequests =
+    args.roomSelectionMode === "SpecificRooms"
+      ? Object.entries(
+          selectedRooms.reduce<Record<string, number>>((counts, room) => {
+            counts[room.roomTypeId] = (counts[room.roomTypeId] ?? 0) + 1;
+            return counts;
+          }, {})
+        ).map(([roomTypeId, quantity]) => ({ roomTypeId, quantity }))
+      : args.roomTypeRequests;
+
+  return checkAvailabilityConflicts({
+    roomSelectionMode: args.roomSelectionMode,
+    blocks: args.blocks,
+    roomTypeRequests: availabilityRoomTypeRequests,
+    requestedRoomIds: args.requestedRoomIds,
+    ...resources,
+  });
+}
+
+async function computeManualAllocationAvailability(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  request: Doc<"bookingRequests">,
+  assignedRoomIds: Id<"rooms">[]
+): Promise<AvailabilityCheckResult> {
+  const resources = await availabilityResources(ctx, tenantId, request._id, {
+    includeInactiveRooms: true,
+  });
+
+  return checkAvailabilityConflicts({
+    roomSelectionMode: "SpecificRooms",
+    blocks: request.blocks,
+    roomTypeRequests: request.roomTypeRequests,
+    requestedRoomIds: assignedRoomIds,
+    ...resources,
   });
 }
 
@@ -782,6 +850,30 @@ export const getRequest = query({
   },
 });
 
+export const previewManualAllocation = query({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    requestId: v.id("bookingRequests"),
+    assignedRoomIds: v.array(v.id("rooms")),
+  },
+  handler: async (ctx, args) => {
+    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
+    const request = await ctx.db.get(args.requestId);
+
+    if (!request || request.tenantId !== tenant._id) {
+      throw new Error("Request not found");
+    }
+
+    return computeManualAllocationAvailability(
+      ctx,
+      tenant._id,
+      request,
+      args.assignedRoomIds
+    );
+  },
+});
+
 export const getPublicRequestByReference = query({
   args: {
     tenantSlug: v.string(),
@@ -1030,6 +1122,45 @@ export const createRequest = mutation({
       throw new Error(conflictMetadata.conflicts[0]?.message ?? conflictMetadata.summary);
     }
 
+    const allocation =
+      args.roomSelectionMode === "RoomTypeQuantity"
+        ? autoAllocateRooms({
+            roomSelectionMode: args.roomSelectionMode,
+            blocks,
+            roomTypeRequests: args.roomTypeRequests,
+            ...(await availabilityResources(ctx, tenant._id)),
+          })
+        : {
+            status: "ManualReviewRequired" as const,
+            assignedRoomIds: [],
+            conflicts: [],
+            notes: "Specific room requests are left for manual staff allocation.",
+          };
+    const allocationConflictRoomTypeIds = new Set(
+      allocation.conflicts
+        .map((conflict) => conflict.roomTypeId)
+        .filter((roomTypeId): roomTypeId is string => roomTypeId !== undefined)
+    );
+    const finalConflictMetadata =
+      allocation.conflicts.length > 0
+        ? {
+            ...conflictMetadata,
+            available: false,
+            highestSeverity: "likely_unavailable" as const,
+            summary:
+              "Automatic room allocation could not satisfy every requested room quantity.",
+            conflicts: [
+              ...conflictMetadata.conflicts.filter(
+                (conflict) =>
+                  conflict.type !== "room_type_exhausted" ||
+                  !conflict.roomTypeId ||
+                  !allocationConflictRoomTypeIds.has(conflict.roomTypeId)
+              ),
+              ...allocation.conflicts,
+            ],
+          }
+        : conflictMetadata;
+
     const now = Date.now();
     const requesterUser = await requesterUserByEmail(ctx, tenant._id, args.requesterEmail);
     const normalizedRequesterEmail = normalizeEmail(args.requesterEmail);
@@ -1051,8 +1182,14 @@ export const createRequest = mutation({
       customInputs: args.customInputs,
       attachmentStorageIds: args.attachmentStorageIds,
       tenantId: tenant._id,
-      assignedRoomIds: [],
-      conflictMetadata,
+      assignedRoomIds: allocation.assignedRoomIds as Id<"rooms">[],
+      allocationStatus:
+        args.roomSelectionMode === "RoomTypeQuantity"
+          ? allocation.status
+          : "Unallocated",
+      allocationNotes: allocation.notes,
+      allocationUpdatedAt: now,
+      conflictMetadata: finalConflictMetadata,
       bookingNoticeMetadata: noticeEvaluation.violations.length
         ? {
             rules: tenantBookingNoticeRules(tenant),
@@ -1081,8 +1218,9 @@ export const createRequest = mutation({
         `Requester: ${args.requesterName.trim()} <${normalizedRequesterEmail}>`,
         `When: ${formatRequestWindow(blocks, tenant.timezone)}`,
         `Reference: ${requestId}`,
-        conflictMetadata.conflicts.length
-          ? `Availability warnings: ${conflictMetadata.conflicts.length}`
+        `Allocation: ${allocation.status}`,
+        finalConflictMetadata.conflicts.length
+          ? `Availability warnings: ${finalConflictMetadata.conflicts.length}`
           : "Availability warnings: none",
         noticeEvaluation.violations.length
           ? `Booking notice: ${noticeEvaluation.violations.map((violation) => violation.message).join(" ")}`
@@ -1100,18 +1238,20 @@ export const updateStatus = mutation({
     tenantSlug: v.string(),
     auth: authContextValidator,
     requestId: v.id("bookingRequests"),
-    status: v.union(v.literal("Pending"), v.literal("Approved"), v.literal("Completed"), v.literal("Declined"), v.literal("Cancelled")),
+    status: v.union(v.literal("Pending"), v.literal("Approved"), v.literal("Confirmed"), v.literal("Completed"), v.literal("Declined"), v.literal("Cancelled")),
     assignedRoomIds: v.optional(v.array(v.id("rooms"))),
   },
   handler: async (ctx, args) => {
-    const { tenant } = await requireStaff(ctx, args.tenantSlug, args.auth);
+    const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const request = await ctx.db.get(args.requestId);
     if (!request || request.tenantId !== tenant._id) throw new Error("Request not found");
 
     const assignedRoomIds = args.assignedRoomIds ?? request.assignedRoomIds;
     const requiresActiveRooms =
       bookingEndsInFuture(request) &&
-      (args.status === "Pending" || args.status === "Approved");
+      (args.status === "Pending" ||
+        args.status === "Approved" ||
+        args.status === "Confirmed");
 
     await validateAssignedRooms(ctx, tenant._id, assignedRoomIds, requiresActiveRooms);
     const conflictMetadata = await computeAvailability(ctx, tenant._id, {
@@ -1127,8 +1267,57 @@ export const updateStatus = mutation({
     await ctx.db.patch(args.requestId, {
       status: args.status,
       assignedRoomIds,
+      allocationStatus:
+        args.assignedRoomIds !== undefined
+          ? "ManuallyAdjusted"
+          : request.allocationStatus,
+      allocationUpdatedByUserId:
+        args.assignedRoomIds !== undefined
+          ? user?._id
+          : request.allocationUpdatedByUserId,
+      allocationUpdatedAt:
+        args.assignedRoomIds !== undefined ? Date.now() : request.allocationUpdatedAt,
       conflictMetadata,
       updatedAt: Date.now(),
+    });
+  },
+});
+
+export const updateAllocation = mutation({
+  args: {
+    tenantSlug: v.string(),
+    auth: authContextValidator,
+    requestId: v.id("bookingRequests"),
+    assignedRoomIds: v.array(v.id("rooms")),
+    allocationNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
+    const request = await ctx.db.get(args.requestId);
+
+    if (!request || request.tenantId !== tenant._id) {
+      throw new Error("Request not found");
+    }
+
+    await validateAssignedRooms(ctx, tenant._id, args.assignedRoomIds, false);
+
+    const conflictMetadata = await computeManualAllocationAvailability(
+      ctx,
+      tenant._id,
+      request,
+      args.assignedRoomIds
+    );
+    const now = Date.now();
+    const allocationNotes = args.allocationNotes?.trim();
+
+    await ctx.db.patch(args.requestId, {
+      assignedRoomIds: args.assignedRoomIds,
+      allocationStatus: "ManuallyAdjusted",
+      allocationNotes: allocationNotes || undefined,
+      allocationUpdatedByUserId: user?._id,
+      allocationUpdatedAt: now,
+      conflictMetadata,
+      updatedAt: now,
     });
   },
 });
@@ -1163,48 +1352,29 @@ export const validateAvailability = action({
     roomTypeRequests: v.array(v.object({ roomTypeId: v.id("roomTypes"), quantity: v.number() })),
   },
   handler: async (ctx, args): Promise<{ available: boolean; reason?: string }> => {
-    const [approved, rooms, roomTypes] = await Promise.all([
-      ctx.runQuery(api.bookings.internalApprovedRequests, { tenantId: args.tenantId }),
-      ctx.runQuery(api.bookings.internalActiveRooms, { tenantId: args.tenantId }),
-      ctx.runQuery(api.bookings.internalRoomTypes, { tenantId: args.tenantId }),
-    ]);
-    const durationError = validateMaxBookingDuration(
-      args.blocks,
-      args.roomTypeRequests,
-      roomTypes.map((roomType) => ({
-        id: roomType._id,
-        name: roomType.name,
-        maxBookingDurationMinutes:
-          roomType.maxBookingDurationMinutes ??
-          (roomType.maxDurationHours !== undefined
-            ? roomType.maxDurationHours * 60
-            : undefined),
-      }))
-    );
+    const snapshot = await ctx.runQuery(api.bookings.internalAvailabilitySnapshot, {
+      tenantId: args.tenantId,
+    });
+    const result = checkAvailabilityConflicts({
+      blocks: args.blocks,
+      roomTypeRequests: args.roomTypeRequests,
+      roomSelectionMode: "RoomTypeQuantity",
+      ...snapshot,
+    });
 
-    if (durationError) {
-      return { available: false, reason: durationError };
-    }
-
-    const hasConflict = hasBookingConflict(args.blocks, approved);
-    if (hasConflict) {
-      return { available: false, reason: "Requested time overlaps an approved booking or blocked time." };
-    }
-
-    const allocation = allocateRoomsByType(
-      rooms.map((room) => ({
-        id: room._id,
-        roomTypeId: room.roomTypeId,
-        active: room.active,
-      })),
-      approved,
-      args.blocks,
-      args.roomTypeRequests
-    );
-
-    return allocation.success
+    return result.available
       ? { available: true }
-      : { available: false, reason: allocation.reason };
+      : {
+          available: false,
+          reason: result.conflicts[0]?.message ?? result.summary,
+        };
+  },
+});
+
+export const internalAvailabilitySnapshot = query({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args) => {
+    return availabilityResources(ctx, args.tenantId);
   },
 });
 

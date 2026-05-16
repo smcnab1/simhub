@@ -6,6 +6,7 @@ type StatusVariant =
   | "inactive"
   | "pending"
   | "approved"
+  | "confirmed"
   | "declined"
   | "completed"
   | "cancelled"
@@ -32,6 +33,11 @@ const variantMap: Record<StatusVariant, { label: string; className: string }> = 
   },
   approved: {
     label: "Approved",
+    className:
+      "bg-primary/10 text-primary border-border hover:bg-primary/10",
+  },
+  confirmed: {
+    label: "Confirmed",
     className:
       "bg-primary/10 text-primary border-border hover:bg-primary/10",
   },

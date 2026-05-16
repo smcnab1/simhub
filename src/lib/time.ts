@@ -1,5 +1,5 @@
 import { differenceInMinutes, parseISO } from "date-fns";
-import { rangesOverlap } from "./booking-logic";
+import { rangesOverlap } from "./conflict-engine";
 import type { BookingBlock } from "./domain";
 
 export const UPLOAD_MAX_BYTES = 100 * 1024 * 1024;

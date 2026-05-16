@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  allocateRoomsByType,
   bookingDurationMinutes,
   bookingBlocksFromSessionWindow,
-  checkAvailabilityConflicts,
   evaluateBookingNoticeWindow,
   formatBookingDuration,
-  hasBookingConflict,
   occupancyDurationMinutes,
   occupiedBookingWindow,
-  rangesOverlap,
   roomTypeBufferMinutes,
   validateBookingBlocks,
   validateBookingWithinStaffHours,
@@ -17,11 +13,18 @@ import {
   validateSessionWithinOpeningHours,
   validateRoomSelectionState,
   sessionDurationMinutes,
-  type AssignedBooking,
   type BookingBlock,
   type BookingRange,
-  type RoomAllocationRoom,
 } from "@/lib/booking-logic";
+import {
+  allocateRoomsByType,
+  autoAllocateRooms,
+  checkAvailabilityConflicts,
+  hasBookingConflict,
+  rangesOverlap,
+  type AssignedBooking,
+  type RoomAllocationRoom,
+} from "@/lib/conflict-engine";
 import {
   campusIsActive,
   normalizeCampusName,
@@ -396,6 +399,140 @@ describe("room allocation logic", () => {
   });
 });
 
+describe("automatic room allocation engine", () => {
+  const rooms = [
+    {
+      id: "immersive-1",
+      code: "PH901",
+      name: "Immersive Suite 1",
+      roomTypeId: "immersive",
+      campusId: "campus-1",
+      active: true,
+    },
+    {
+      id: "immersive-2",
+      code: "PH902",
+      name: "Immersive Suite 2",
+      roomTypeId: "immersive",
+      campusId: "campus-1",
+      active: true,
+    },
+    {
+      id: "immersive-3",
+      code: "PH903",
+      name: "Immersive Suite 3",
+      roomTypeId: "immersive",
+      campusId: "campus-2",
+      active: true,
+    },
+    {
+      id: "inactive-1",
+      code: "PH904",
+      name: "Inactive Suite",
+      roomTypeId: "immersive",
+      campusId: "campus-1",
+      active: false,
+    },
+  ];
+  const roomTypes = [
+    {
+      id: "immersive",
+      name: "Immersive Room",
+      campusId: "campus-1",
+      active: true,
+    },
+  ];
+  const campuses = [
+    { id: "campus-1", name: "Paragon House", active: true },
+    { id: "campus-2", name: "Reading", active: true },
+  ];
+
+  it("auto-allocates active matching rooms in stable order", () => {
+    const result = autoAllocateRooms({
+      roomSelectionMode: "RoomTypeQuantity",
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 2 }],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [],
+      blockedTimes: [],
+    });
+
+    expect(result.status).toBe("AutoAllocated");
+    expect(result.assignedRoomIds).toEqual(["immersive-1", "immersive-2"]);
+  });
+
+  it("excludes rooms occupied by overlapping approved bookings and blocked times", () => {
+    const result = autoAllocateRooms({
+      roomSelectionMode: "RoomTypeQuantity",
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 2 }],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [
+        {
+          id: "booking-1",
+          status: "Approved",
+          assignedRoomIds: ["immersive-1"],
+          blocks: [sessionBlock],
+        },
+      ],
+      blockedTimes: [
+        {
+          id: "block-1",
+          roomId: "immersive-2",
+          start: "2026-05-18T09:30:00+01:00",
+          end: "2026-05-18T10:30:00+01:00",
+          reason: "Maintenance",
+        },
+      ],
+    });
+
+    expect(result.status).toBe("Conflict");
+    expect(result.assignedRoomIds).toEqual([]);
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "room_type_exhausted",
+        requestedQuantity: 2,
+        availableQuantity: 0,
+        missingQuantity: 2,
+        unavailableRoomIds: ["immersive-1", "immersive-2"],
+      })
+    );
+  });
+
+  it("respects setup and cleanup occupancy when allocating rooms", () => {
+    const result = autoAllocateRooms({
+      roomSelectionMode: "RoomTypeQuantity",
+      blocks: [
+        { start: "2026-05-18T08:00:00+01:00", end: "2026-05-18T09:00:00+01:00" },
+        { start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T17:00:00+01:00" },
+        { start: "2026-05-18T17:00:00+01:00", end: "2026-05-18T18:00:00+01:00" },
+      ],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [
+        {
+          id: "booking-setup",
+          status: "Approved",
+          assignedRoomIds: ["immersive-1"],
+          blocks: [
+            { start: "2026-05-18T07:30:00+01:00", end: "2026-05-18T08:30:00+01:00" },
+          ],
+        },
+      ],
+      blockedTimes: [],
+    });
+
+    expect(result.status).toBe("AutoAllocated");
+    expect(result.assignedRoomIds).toEqual(["immersive-2"]);
+  });
+});
+
 describe("availability conflict engine", () => {
   const rooms = [
     {
@@ -453,6 +590,138 @@ describe("availability conflict engine", () => {
     );
   });
 
+  it("checks occupancy windows from setup start through cleanup end", () => {
+    const result = checkAvailabilityConflicts({
+      blocks: [
+        { start: "2026-05-18T08:00:00+01:00", end: "2026-05-18T09:00:00+01:00" },
+        { start: "2026-05-18T09:00:00+01:00", end: "2026-05-18T17:00:00+01:00" },
+        { start: "2026-05-18T17:00:00+01:00", end: "2026-05-18T18:00:00+01:00" },
+      ],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      requestedRoomIds: ["immersive-1"],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [
+        {
+          id: "booking-setup-overlap",
+          status: "Approved",
+          assignedRoomIds: ["immersive-1"],
+          blocks: [
+            { start: "2026-05-18T07:30:00+01:00", end: "2026-05-18T08:30:00+01:00" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "exact_room_overlap",
+        severity: "likely_unavailable",
+        overlapStart: "2026-05-18T07:00:00.000Z",
+        overlapEnd: "2026-05-18T07:30:00.000Z",
+      })
+    );
+  });
+
+  it("ignores cancelled and declined bookings", () => {
+    const result = checkAvailabilityConflicts({
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      requestedRoomIds: ["immersive-1"],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [
+        {
+          id: "cancelled-1",
+          status: "Cancelled",
+          assignedRoomIds: ["immersive-1"],
+          blocks: [sessionBlock],
+        },
+        {
+          id: "declined-1",
+          status: "Declined",
+          assignedRoomIds: ["immersive-1"],
+          blocks: [sessionBlock],
+        },
+      ],
+    });
+
+    expect(result.available).toBe(true);
+    expect(result.conflicts).toEqual([]);
+  });
+
+  it("warns for inactive manually selected rooms", () => {
+    const result = checkAvailabilityConflicts({
+      roomSelectionMode: "SpecificRooms",
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      requestedRoomIds: ["inactive-1"],
+      rooms: [
+        ...rooms,
+        {
+          id: "inactive-1",
+          code: "PH999",
+          name: "Inactive Suite",
+          roomTypeId: "immersive",
+          campusId: "campus-1",
+          active: false,
+        },
+      ],
+      roomTypes,
+      campuses,
+      bookings: [],
+    });
+
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "inactive_room",
+        severity: "warning",
+        roomCode: "PH999",
+      })
+    );
+  });
+
+  it("warns when manually selected rooms do not match requested room types", () => {
+    const result = checkAvailabilityConflicts({
+      roomSelectionMode: "SpecificRooms",
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      requestedRoomIds: ["classroom-1"],
+      rooms: [
+        ...rooms,
+        {
+          id: "classroom-1",
+          code: "PH100",
+          name: "Classroom",
+          roomTypeId: "classroom",
+          campusId: "campus-1",
+          active: true,
+        },
+      ],
+      roomTypes: [
+        ...roomTypes,
+        {
+          id: "classroom",
+          name: "Classroom",
+          campusId: "campus-1",
+          active: true,
+        },
+      ],
+      campuses,
+      bookings: [],
+    });
+
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "room_type_mismatch",
+        severity: "warning",
+        roomCode: "PH100",
+      })
+    );
+  });
+
   it("reports room type exhaustion against approved bookings", () => {
     const result = checkAvailabilityConflicts({
       blocks: [sessionBlock],
@@ -481,6 +750,34 @@ describe("availability conflict engine", () => {
         type: "room_type_exhausted",
         severity: "likely_unavailable",
         roomTypeName: "Immersive Room",
+      })
+    );
+  });
+
+  it("treats confirmed bookings as blocking availability", () => {
+    const result = checkAvailabilityConflicts({
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      requestedRoomIds: ["immersive-1"],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [
+        {
+          id: "confirmed-1",
+          status: "Confirmed",
+          assignedRoomIds: ["immersive-1"],
+          blocks: [sessionBlock],
+        },
+      ],
+    });
+
+    expect(result.available).toBe(false);
+    expect(result.conflicts).toContainEqual(
+      expect.objectContaining({
+        type: "exact_room_overlap",
+        severity: "likely_unavailable",
+        conflictingStatus: "Confirmed",
       })
     );
   });
@@ -539,6 +836,38 @@ describe("availability conflict engine", () => {
         blockedReason: "Maintenance",
       })
     );
+  });
+
+  it("ignores inactive blocked periods", () => {
+    const result = checkAvailabilityConflicts({
+      blocks: [sessionBlock],
+      roomTypeRequests: [{ roomTypeId: "immersive", quantity: 1 }],
+      rooms,
+      roomTypes,
+      campuses,
+      bookings: [],
+      blockedTimes: [
+        {
+          id: "block-archived",
+          campusId: "campus-1",
+          start: "2026-05-18T08:30:00+01:00",
+          end: "2026-05-18T11:00:00+01:00",
+          reason: "Old hold",
+          archivedAt: Date.parse("2026-05-01T00:00:00Z"),
+        },
+        {
+          id: "block-inactive",
+          campusId: "campus-1",
+          start: "2026-05-18T08:30:00+01:00",
+          end: "2026-05-18T11:00:00+01:00",
+          reason: "Disabled hold",
+          active: false,
+        },
+      ],
+    });
+
+    expect(result.available).toBe(true);
+    expect(result.conflicts).toEqual([]);
   });
 });
 
