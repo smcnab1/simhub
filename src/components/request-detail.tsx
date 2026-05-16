@@ -5,11 +5,17 @@ import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
+  CalendarDays,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
   Clock,
+  FileText,
   Info,
   LoaderCircle,
   MessageSquare,
   Search,
+  User,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -17,12 +23,29 @@ import { toast } from "sonner";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
-import { Card, SectionHeader, StatusPill } from "@/components/ui";
+import { formFieldClass, primaryButtonClass } from "@/components/ui";
+import { StatusBadge } from "@/components/admin/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { formFieldClass, primaryButtonClass } from "@/components/ui";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,7 +64,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatBlockTime, formatRooms } from "@/lib/format";
+import { formatBlockTime, formatRequestDate, formatRooms } from "@/lib/format";
 import { TENANT_SLUG } from "@/lib/config";
 import {
   formatBookingDuration,
@@ -49,6 +72,10 @@ import {
   sessionDurationMinutes,
 } from "@/lib/booking-logic";
 import { auditEventLabel } from "@/lib/audit-types";
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 function severityLabel(severity: string) {
   return severity === "likely_unavailable"
@@ -62,13 +89,119 @@ function severityClass(severity: string) {
   if (severity === "likely_unavailable") {
     return "border-destructive/35 bg-destructive/10 text-destructive";
   }
-
   if (severity === "warning") {
     return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200";
   }
-
   return "border-primary/30 bg-primary/10 text-primary";
 }
+
+function titleCase(value: string) {
+  return value.replace(/\w\S*/g, (word) => {
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+}
+
+function formatAuditEventLabel(eventType: string) {
+  const labels: Record<string, string> = {
+    "booking.created": "Booking Created",
+    "booking.updated": "Booking Updated",
+    "booking.status_changed": "Status Changed",
+    "booking.approved": "Booking Approved",
+    "booking.declined": "Booking Declined",
+    "booking.cancelled": "Booking Cancelled",
+    "booking.archived": "Booking Archived",
+    "booking.deleted": "Booking Deleted",
+    "booking.allocation_changed": "Allocation Changed",
+    "booking.allocation_override": "Allocation Override",
+    "booking.conflict_detected": "Conflict Detected",
+    "booking.comment_added": "Comment Added",
+    "booking.comment_edited": "Comment Edited",
+    "booking.comment_deleted": "Comment Deleted",
+    "blocked_time.created": "Blocked Time Created",
+    "blocked_time.updated": "Blocked Time Updated",
+    "blocked_time.deleted": "Blocked Time Deleted",
+  };
+  return labels[eventType] ?? titleCase(auditEventLabel(eventType));
+}
+
+function formatAllocationStatus(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return "Not allocated";
+  }
+  const labels: Record<string, string> = {
+    Unallocated: "Not allocated",
+    AutoAllocated: "Auto-allocated",
+    ManualReviewRequired: "Needs manual review",
+    ManuallyAdjusted: "Manually adjusted",
+    Conflict: "Conflict detected",
+  };
+  return labels[String(value)] ?? String(value);
+}
+
+function getRoomLabel(roomId: unknown, rooms?: RoomOption[]) {
+  if (typeof roomId !== "string") return "Unknown room";
+  const room = rooms?.find((item) => String(item._id) === roomId);
+  if (!room) return "Unknown room";
+  return room.code;
+}
+
+function formatRoomChip(room?: { code: string; name: string } | null) {
+  if (!room) return "Unknown room";
+  return `${room.name} (${room.code})`;
+}
+
+function toRoomIdArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function getRoomDiff(before: unknown, after: unknown, rooms?: RoomOption[]) {
+  const beforeIds = new Set(toRoomIdArray(before));
+  const afterIds = new Set(toRoomIdArray(after));
+  const added = [...afterIds]
+    .filter((roomId) => !beforeIds.has(roomId))
+    .map((roomId) => getRoomLabel(roomId, rooms));
+  const removed = [...beforeIds]
+    .filter((roomId) => !afterIds.has(roomId))
+    .map((roomId) => getRoomLabel(roomId, rooms));
+  return { added, removed };
+}
+
+function humanFieldLabel(field: string) {
+  const labels: Record<string, string> = {
+    assignedRoomIds: "Rooms",
+    allocationStatus: "Allocation status",
+    allocationNotes: "Allocation notes",
+    status: "Booking status",
+  };
+  return labels[field] ?? field;
+}
+
+function humanValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "None";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "None";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return "Updated";
+  return String(value);
+}
+
+function formatAuditTime(value?: number) {
+  if (!value) return "Not recorded";
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function eventMetadata(event: TimelineEvent) {
+  return event.metadata && typeof event.metadata === "object"
+    ? (event.metadata as Record<string, unknown>)
+    : {};
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type RoomOption = {
   _id: Id<"rooms">;
@@ -122,130 +255,9 @@ type StatusAction =
   | "Pending"
   | "Completed";
 
-function eventMetadata(event: TimelineEvent) {
-  return event.metadata && typeof event.metadata === "object"
-    ? (event.metadata as Record<string, unknown>)
-    : {};
-}
-
-function titleCase(value: string) {
-  return value.replace(/\w\S*/g, (word) => {
-    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-  });
-}
-
-function formatAuditEventLabel(eventType: string) {
-  const labels: Record<string, string> = {
-    "booking.created": "Booking Created",
-    "booking.updated": "Booking Updated",
-    "booking.status_changed": "Status Changed",
-    "booking.approved": "Booking Approved",
-    "booking.declined": "Booking Declined",
-    "booking.cancelled": "Booking Cancelled",
-    "booking.archived": "Booking Archived",
-    "booking.deleted": "Booking Deleted",
-    "booking.allocation_changed": "Room Allocation Changed",
-    "booking.allocation_override": "Room Allocation Overridden",
-    "booking.conflict_detected": "Conflict Detected",
-    "booking.comment_added": "Comment Added",
-    "booking.comment_edited": "Comment Edited",
-    "booking.comment_deleted": "Comment Deleted",
-    "blocked_time.created": "Blocked Time Created",
-    "blocked_time.updated": "Blocked Time Updated",
-    "blocked_time.deleted": "Blocked Time Deleted",
-  };
-
-  return labels[eventType] ?? titleCase(auditEventLabel(eventType));
-}
-
-function formatAllocationStatus(value: unknown) {
-  if (value === null || value === undefined || value === "") {
-    return "Not allocated";
-  }
-
-  const labels: Record<string, string> = {
-    Unallocated: "Not allocated",
-    AutoAllocated: "Auto-allocated",
-    ManualReviewRequired: "Needs manual review",
-    ManuallyAdjusted: "Manually adjusted",
-    Conflict: "Conflict detected",
-  };
-
-  return labels[String(value)] ?? String(value);
-}
-
-function getRoomLabel(roomId: unknown, rooms?: RoomOption[]) {
-  if (typeof roomId !== "string") return "Unknown room";
-
-  const room = rooms?.find((item) => String(item._id) === roomId);
-
-  if (!room) return "Unknown room";
-
-  return room.code;
-}
-
-function formatRoomChip(room?: { code: string; name: string } | null) {
-  if (!room) return "Unknown room";
-  return `${room.name} (${room.code})`;
-}
-
-function toRoomIdArray(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
-}
-
-function getRoomDiff(before: unknown, after: unknown, rooms?: RoomOption[]) {
-  const beforeIds = new Set(toRoomIdArray(before));
-  const afterIds = new Set(toRoomIdArray(after));
-
-  const added = [...afterIds]
-    .filter((roomId) => !beforeIds.has(roomId))
-    .map((roomId) => getRoomLabel(roomId, rooms));
-
-  const removed = [...beforeIds]
-    .filter((roomId) => !afterIds.has(roomId))
-    .map((roomId) => getRoomLabel(roomId, rooms));
-
-  return { added, removed };
-}
-
-function humanFieldLabel(field: string) {
-  const labels: Record<string, string> = {
-    assignedRoomIds: "Rooms",
-    allocationStatus: "Allocation status",
-    allocationNotes: "Allocation notes",
-    status: "Booking status",
-  };
-
-  return labels[field] ?? field;
-}
-
-function humanValue(value: unknown) {
-  if (value === null || value === undefined || value === "") return "None";
-
-  if (Array.isArray(value)) {
-    return value.length ? value.join(", ") : "None";
-  }
-
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
-
-  if (typeof value === "object") {
-    return "Updated";
-  }
-
-  return String(value);
-}
-
-function formatAuditTime(value?: number) {
-  if (!value) return "Not recorded";
-
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
+// ---------------------------------------------------------------------------
+// Diff components (preserved)
+// ---------------------------------------------------------------------------
 
 function AllocationChangeSummary({
   diff,
@@ -256,48 +268,36 @@ function AllocationChangeSummary({
 }) {
   const roomEntry = diff.find((entry) => entry.field === "assignedRoomIds");
   const statusEntry = diff.find((entry) => entry.field === "allocationStatus");
-
   const roomChanges = roomEntry
     ? getRoomDiff(roomEntry.before, roomEntry.after, rooms)
     : { added: [], removed: [] };
-
   const statusChanged =
     statusEntry &&
     formatAllocationStatus(statusEntry.before) !==
       formatAllocationStatus(statusEntry.after);
-
   const summaryParts: string[] = [];
-
   if (roomChanges.added.length) {
     summaryParts.push(
-      `${roomChanges.added.length} room${
-        roomChanges.added.length === 1 ? "" : "s"
-      } assigned`
+      `${roomChanges.added.length} room${roomChanges.added.length === 1 ? "" : "s"} assigned`
     );
   }
-
   if (roomChanges.removed.length) {
     summaryParts.push(
-      `${roomChanges.removed.length} room${
-        roomChanges.removed.length === 1 ? "" : "s"
-      } removed`
+      `${roomChanges.removed.length} room${roomChanges.removed.length === 1 ? "" : "s"} removed`
     );
   }
 
   return (
     <div className="mt-2 rounded-lg border border-border bg-background p-3 text-sm">
       <p className="font-medium text-foreground">Room allocation updated</p>
-
       <div className="mt-1 text-muted-foreground">
         {summaryParts.length ? summaryParts.join(", ") : "Allocation updated"}
       </div>
-
       {statusChanged ? (
         <div className="text-muted-foreground">
           Status changed to {formatAllocationStatus(statusEntry.after)}
         </div>
       ) : null}
-
       {roomChanges.added.length || roomChanges.removed.length ? (
         <div className="mt-3 grid gap-1 rounded-md bg-muted/50 p-2 font-mono text-xs">
           {roomChanges.added.map((room, index) => (
@@ -308,7 +308,6 @@ function AllocationChangeSummary({
               +{room}
             </div>
           ))}
-
           {roomChanges.removed.map((room, index) => (
             <div
               key={`removed-${room}-${index}`}
@@ -339,7 +338,7 @@ function GenericChangeSummary({
             {humanFieldLabel(entry.field)}
           </p>
           <p className="mt-1 text-muted-foreground">
-            {humanValue(entry.before)} →{" "}
+            {humanValue(entry.before)} &rarr;{" "}
             <span className="text-foreground">{humanValue(entry.after)}</span>
           </p>
         </div>
@@ -355,38 +354,53 @@ function TimelineDetails({
   event: TimelineEvent;
   rooms?: RoomOption[];
 }) {
+  const [open, setOpen] = useState(false);
   const metadata = eventMetadata(event);
   const bodyMarkdown =
     typeof metadata.bodyMarkdown === "string" ? metadata.bodyMarkdown : null;
+  const hasDiff = Boolean(event.diff?.length);
+  const hasRawMeta =
+    !bodyMarkdown && !hasDiff && Object.keys(metadata).length > 0;
 
   return (
     <>
       {bodyMarkdown ? (
-        <p className="mt-2 rounded-lg border border-border bg-background p-3 text-sm text-foreground">
+        <p className="mt-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
           {bodyMarkdown}
         </p>
       ) : null}
 
-      {event.diff?.length ? (
-        <details className="mt-2 rounded-lg border border-border bg-background p-2 text-xs">
-          <summary className="cursor-pointer font-medium text-foreground">
-            View changes
-          </summary>
-
-          {event.eventType === "booking.allocation_changed" ? (
-            <AllocationChangeSummary diff={event.diff} rooms={rooms} />
-          ) : (
-            <GenericChangeSummary diff={event.diff} />
-          )}
-        </details>
+      {hasDiff ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+            aria-expanded={open}
+          >
+            {open ? (
+              <ChevronUp className="size-3" />
+            ) : (
+              <ChevronDown className="size-3" />
+            )}
+            {open ? "Hide" : "View"} changes
+          </button>
+          {open ? (
+            event.eventType === "booking.allocation_changed" ? (
+              <AllocationChangeSummary diff={event.diff!} rooms={rooms} />
+            ) : (
+              <GenericChangeSummary diff={event.diff!} />
+            )
+          ) : null}
+        </div>
       ) : null}
 
-      {!bodyMarkdown && !event.diff?.length && Object.keys(metadata).length ? (
-        <details className="mt-2 rounded-lg border border-border bg-background p-2 text-xs">
-          <summary className="cursor-pointer font-medium text-foreground">
+      {hasRawMeta ? (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
             Details
           </summary>
-          <code className="mt-2 block overflow-auto rounded bg-muted p-2 text-muted-foreground">
+          <code className="mt-1 block overflow-auto rounded bg-muted p-2 text-xs text-muted-foreground">
             {JSON.stringify(metadata)}
           </code>
         </details>
@@ -395,77 +409,9 @@ function TimelineDetails({
   );
 }
 
-function BookingTimeline({
-  events,
-  rooms,
-}: {
-  events?: TimelineEvent[];
-  rooms?: RoomOption[];
-}) {
-  return (
-    <Card>
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold">Activity timeline</h2>
-        <Badge variant="outline">
-          {events ? `${events.length} events` : "Loading"}
-        </Badge>
-      </div>
-
-      <div className="mt-4 grid gap-3">
-        {events === undefined ? (
-          <p className="text-sm text-muted-foreground">Loading activity...</p>
-        ) : events.length ? (
-          events.map((event) => {
-            const isComment = event.eventType.includes("comment");
-
-            return (
-              <article
-                key={event._id}
-                className="grid grid-cols-[auto_1fr] gap-3"
-              >
-                <div className="mt-1 flex size-8 items-center justify-center rounded-full border border-border bg-muted">
-                  {isComment ? (
-                    <MessageSquare className="size-4" />
-                  ) : (
-                    <Clock className="size-4" />
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-border bg-muted/40 p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">
-                      {formatAuditEventLabel(event.eventType)}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatAuditTime(event.createdAt)}
-                    </span>
-                  </div>
-
-                  <p className="mt-2 text-sm font-medium text-foreground">
-                    {event.eventType === "booking.allocation_changed"
-                      ? "Room allocation updated"
-                      : event.message}
-                  </p>
-
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {event.actorName ?? "System"}
-                    {event.actorEmail ? ` · ${event.actorEmail}` : ""}
-                  </p>
-
-                  <TimelineDetails event={event} rooms={rooms} />
-                </div>
-              </article>
-            );
-          })
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No activity has been recorded yet.
-          </p>
-        )}
-      </div>
-    </Card>
-  );
-}
+// ---------------------------------------------------------------------------
+// Manual allocation panel
+// ---------------------------------------------------------------------------
 
 function ManualAllocationPanel({
   request,
@@ -488,8 +434,9 @@ function ManualAllocationPanel({
   const [error, setError] = useState<string | null>(null);
 
   const hasAllocatedRooms = (request.assignedRoomIds ?? []).length > 0;
-  const [isEditingAllocation, setIsEditingAllocation] =
-    useState(!hasAllocatedRooms);
+  const [isEditingAllocation, setIsEditingAllocation] = useState(
+    !hasAllocatedRooms
+  );
 
   const selectedRoomIdSet = useMemo(
     () => new Set<string>(selectedRoomIds.map(String)),
@@ -510,7 +457,6 @@ function ManualAllocationPanel({
 
   const filteredRooms = useMemo(() => {
     const term = query.trim().toLowerCase();
-
     return (rooms ?? []).filter((room) => {
       if (!term) return true;
       return [room.name, room.code, room.roomType?.name, room.campus?.name]
@@ -550,7 +496,6 @@ function ManualAllocationPanel({
   async function save() {
     setSaving(true);
     setError(null);
-
     try {
       await updateAllocation({
         tenantSlug,
@@ -559,13 +504,11 @@ function ManualAllocationPanel({
         assignedRoomIds: selectedRoomIds,
         allocationNotes: notes,
       });
-
       toast.success("Room allocation saved.");
       setIsEditingAllocation(false);
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Unable to save allocation.";
-
       setError(message);
       toast.error(message);
     } finally {
@@ -574,23 +517,23 @@ function ManualAllocationPanel({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-muted/40 p-3">
+    <div className="mt-4 rounded-xl border border-border bg-muted/30 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-foreground">
             Allocation management
           </p>
-          <p className="text-xs text-muted-foreground">
-            Last updated by {request.allocationUpdatedBy?.name ?? "unknown"} ·{" "}
-            {formatAuditTime(request.allocationUpdatedAt)}
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {request.allocationUpdatedBy?.name
+              ? `Last updated by ${request.allocationUpdatedBy.name}`
+              : "Not yet updated"}{" "}
+            &middot; {formatAuditTime(request.allocationUpdatedAt)}
           </p>
         </div>
-
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">
+          <Badge variant="outline" className="text-xs">
             {formatAllocationStatus(request.allocationStatus)}
           </Badge>
-
           {hasAllocatedRooms && !isEditingAllocation ? (
             <Button
               type="button"
@@ -598,13 +541,14 @@ function ManualAllocationPanel({
               size="sm"
               onClick={() => setIsEditingAllocation(true)}
             >
-              Edit room allocation
+              Edit allocation
             </Button>
           ) : null}
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      {/* Current rooms */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
         {selectedRooms.map((room, index) =>
           room ? (
             isEditingAllocation ? (
@@ -612,92 +556,91 @@ function ManualAllocationPanel({
                 key={room._id}
                 type="button"
                 onClick={() => toggleRoom(room._id)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium"
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive"
+                aria-label={`Remove ${formatRoomChip(room)}`}
               >
-                {formatRoomChip(room)} <X className="size-3" />
+                {formatRoomChip(room)} <X className="size-3" aria-hidden />
               </button>
             ) : (
-              <Badge key={room._id} variant="outline">
+              <Badge key={room._id} variant="outline" className="text-xs">
                 {formatRoomChip(room)}
               </Badge>
             )
           ) : (
-            <Badge key={`${selectedRoomIds[index]}-${index}`} variant="outline">
+            <Badge key={`${selectedRoomIds[index]}-${index}`} variant="outline" className="text-xs">
               Unknown room
             </Badge>
           )
         )}
-
         {selectedRooms.length === 0 ? (
-          <span className="text-sm text-muted-foreground">
-            No rooms assigned.
-          </span>
+          <p className="text-sm text-muted-foreground italic">
+            No rooms assigned yet.
+          </p>
         ) : null}
       </div>
 
       {isEditingAllocation ? (
-        <>
-          <div className="mt-3 grid gap-2">
+        <div className="mt-4 grid gap-3">
+          {/* Room search */}
+          <div>
             <label
-              className="text-xs font-medium text-muted-foreground"
+              className="mb-1.5 block text-xs font-medium text-muted-foreground"
               htmlFor="room-search"
             >
               Search rooms
             </label>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="room-search"
                 value={query}
                 onChange={(event) => setQuery(event.currentTarget.value)}
-                className="pl-9"
-                placeholder="Room, code, type, or campus"
+                className="pl-8 text-sm"
+                placeholder="Name, code, type, or campus"
               />
             </div>
 
-            <div className="grid max-h-64 gap-2 overflow-auto rounded-lg border border-border bg-background p-2">
+            <div className="mt-2 grid max-h-56 gap-1.5 overflow-auto rounded-lg border border-border bg-background p-2">
               {filteredRooms.map((room) => {
                 const selected = selectedRoomIdSet.has(String(room._id));
-
                 return (
                   <button
                     key={room._id}
                     type="button"
                     onClick={() => toggleRoom(room._id)}
-                    className={`grid rounded-lg border p-2 text-left text-sm ${
+                    className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
                       selected
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-card"
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-transparent bg-muted/30 text-foreground hover:bg-muted"
                     }`}
                   >
-                    <span className="font-medium text-foreground">
-                      {formatRoomChip(room)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {room.roomType?.name ?? "Unknown type"} ·{" "}
-                      {room.campus?.name ?? "No campus"} · capacity{" "}
+                    <span className="font-medium">{formatRoomChip(room)}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {room.roomType?.name ?? "Unknown type"} &middot;{" "}
+                      {room.campus?.name ?? "No campus"} &middot; cap{" "}
                       {room.capacity}
-                      {room.active ? "" : " · inactive"}
+                      {room.active ? "" : " (inactive)"}
                     </span>
                   </button>
                 );
               })}
-
               {rooms === undefined ? (
-                <p className="text-sm text-muted-foreground">Loading rooms...</p>
+                <p className="px-2 py-1 text-sm text-muted-foreground">
+                  Loading rooms...
+                </p>
               ) : null}
-
               {rooms !== undefined && filteredRooms.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="px-2 py-1 text-sm text-muted-foreground">
                   No rooms match that search.
                 </p>
               ) : null}
             </div>
           </div>
 
-          <div className="mt-3 grid gap-2">
+          {/* Allocation notes */}
+          <div>
             <label
-              className="text-xs font-medium text-muted-foreground"
+              className="mb-1.5 block text-xs font-medium text-muted-foreground"
               htmlFor="allocation-notes"
             >
               Allocation notes
@@ -706,40 +649,36 @@ function ManualAllocationPanel({
               id="allocation-notes"
               value={notes}
               onChange={(event) => setNotes(event.currentTarget.value)}
-              placeholder="Moved due to maintenance"
+              placeholder="E.g. Moved due to maintenance"
+              className="min-h-20 text-sm"
             />
           </div>
 
-          <div className="mt-3 grid gap-2">
+          {/* Preview conflicts */}
+          <div className="grid gap-2">
             {preview === undefined ? (
-              <p className="rounded-lg border border-border bg-background p-2 text-sm text-muted-foreground">
-                Checking selected rooms...
+              <p className="rounded-lg border border-border bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                Checking selected rooms for conflicts...
               </p>
             ) : preview.conflicts.length ? (
               preview.conflicts.map((conflict, index) => (
                 <div
                   key={`${conflict.type}-${index}`}
-                  className={`rounded-lg border p-2 text-sm ${severityClass(
-                    conflict.severity
-                  )}`}
+                  className={`rounded-lg border p-2.5 text-sm ${severityClass(conflict.severity)}`}
+                  role="alert"
                 >
                   <div className="flex gap-2">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                     <div>
                       <p className="font-medium">{conflict.message}</p>
                       {conflict.roomCode ? (
-                        <p className="text-xs opacity-85">
+                        <p className="mt-0.5 text-xs opacity-80">
                           Room: {conflict.roomCode}
                         </p>
                       ) : null}
                       {conflict.blockedReason ? (
-                        <p className="text-xs opacity-85">
+                        <p className="text-xs opacity-80">
                           Blocked: {conflict.blockedReason}
-                        </p>
-                      ) : null}
-                      {conflict.conflictingRequestId ? (
-                        <p className="text-xs opacity-85">
-                          Conflicting request: {conflict.conflictingRequestId}
                         </p>
                       ) : null}
                     </div>
@@ -747,27 +686,37 @@ function ManualAllocationPanel({
                 </div>
               ))
             ) : (
-              <p className="rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary">
-                No conflicts detected for this manual allocation.
+              <p className="rounded-lg border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
+                No conflicts detected for this selection.
               </p>
             )}
           </div>
 
           {error ? (
-            <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
+            <p
+              className="rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive"
+              role="alert"
+            >
               {error}
             </p>
           ) : null}
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button type="button" onClick={save} disabled={!hasChanges || saving}>
-              {saving ? <LoaderCircle className="size-4 animate-spin" /> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={save}
+              disabled={!hasChanges || saving}
+              size="sm"
+            >
+              {saving ? (
+                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+              ) : null}
               Save allocation
             </Button>
-
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => {
                 reset();
                 setIsEditingAllocation(!hasAllocatedRooms);
@@ -777,11 +726,153 @@ function ManualAllocationPanel({
               Cancel
             </Button>
           </div>
-        </>
+        </div>
       ) : null}
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Collapsible card wrapper
+// ---------------------------------------------------------------------------
+
+function CollapsibleCard({
+  title,
+  icon: Icon,
+  badge,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  badge?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger className="w-full text-left">
+          <CardHeader className="border-b pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                {Icon ? (
+                  <Icon className="size-4 text-muted-foreground" aria-hidden />
+                ) : null}
+                {title}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {badge}
+                {open ? (
+                  <ChevronUp className="size-4 text-muted-foreground" aria-hidden />
+                ) : (
+                  <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
+                )}
+              </div>
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-4">{children}</CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Activity timeline
+// ---------------------------------------------------------------------------
+
+function ActivityTimelineCard({
+  events,
+  rooms,
+}: {
+  events?: TimelineEvent[];
+  rooms?: RoomOption[];
+}) {
+  const eventCount = events?.length ?? 0;
+
+  return (
+    <CollapsibleCard
+      title="Activity timeline"
+      icon={Clock}
+      defaultOpen={false}
+      badge={
+        events !== undefined ? (
+          <Badge variant="outline" className="text-xs">
+            {eventCount} {eventCount === 1 ? "event" : "events"}
+          </Badge>
+        ) : null
+      }
+    >
+      {events === undefined ? (
+        <p className="text-sm text-muted-foreground">Loading activity...</p>
+      ) : events.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No activity recorded yet.
+        </p>
+      ) : (
+        <ol className="relative border-l border-border pl-5">
+          {events.map((event, idx) => {
+            const isComment = event.eventType.includes("comment");
+            return (
+              <li
+                key={event._id}
+                className={`relative pb-5 ${idx === events.length - 1 ? "pb-0" : ""}`}
+              >
+                {/* dot */}
+                <span
+                  className="absolute -left-[1.3125rem] flex size-6 items-center justify-center rounded-full border border-border bg-card"
+                  aria-hidden
+                >
+                  {isComment ? (
+                    <MessageSquare className="size-3 text-muted-foreground" />
+                  ) : (
+                    <Clock className="size-3 text-muted-foreground" />
+                  )}
+                </span>
+
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium text-foreground">
+                      {formatAuditEventLabel(event.eventType)}
+                    </span>
+                    <time
+                      className="text-xs text-muted-foreground"
+                      dateTime={new Date(event.createdAt).toISOString()}
+                    >
+                      {formatAuditTime(event.createdAt)}
+                    </time>
+                  </div>
+
+                  <p className="mt-1 text-sm font-medium text-foreground">
+                    {event.eventType === "booking.allocation_changed"
+                      ? "Room allocation updated"
+                      : event.message}
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {event.actorName ?? "System"}
+                    {event.actorEmail ? ` \u00b7 ${event.actorEmail}` : ""}
+                  </p>
+
+                  <TimelineDetails event={event} rooms={rooms} />
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </CollapsibleCard>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main RequestDetail component
+// ---------------------------------------------------------------------------
 
 export function RequestDetail({
   id,
@@ -795,10 +886,17 @@ export function RequestDetail({
   const emailFromUrl = searchParams.get("email")?.trim() ?? "";
   const tenantSlug = auth?.tenantSlug ?? "";
 
+  // Role-based access
+  const isStaffOrAbove =
+    auth?.role === "Developer" ||
+    auth?.role === "Admin" ||
+    auth?.role === "Staff";
+
   const updateStatus = useMutation(api.bookings.updateStatus);
   const addComment = useMutation(api.bookings.addComment);
 
   const [statusBusy, setStatusBusy] = useState(false);
+  const [commentBusy, setCommentBusy] = useState(false);
   const [overrideAction, setOverrideAction] = useState<{
     status: "Approved" | "Completed";
     title: string;
@@ -822,7 +920,9 @@ export function RequestDetail({
       : "skip";
 
   const request = useQuery(
-    publicView ? api.bookings.getPublicRequestByReference : api.bookings.getRequest,
+    publicView
+      ? api.bookings.getPublicRequestByReference
+      : api.bookings.getRequest,
     publicView
       ? publicLookupArgs
       : {
@@ -859,9 +959,7 @@ export function RequestDetail({
     allowCompletedOverride?: boolean;
   }) {
     if (!request) return;
-
     setStatusBusy(true);
-
     try {
       await updateStatus({
         tenantSlug,
@@ -872,7 +970,6 @@ export function RequestDetail({
         allowConflictOverride: args.allowConflictOverride,
         allowCompletedOverride: args.allowCompletedOverride,
       });
-
       toast.success(`Booking moved to ${args.status.toLowerCase()}.`);
     } catch (caught) {
       toast.error(
@@ -895,24 +992,19 @@ export function RequestDetail({
 
   function bookingHasEnded() {
     if (!request?.blocks?.length) return false;
-
     const latestEnd = Math.max(
       ...request.blocks.map((block) => Date.parse(block.end))
     );
-
     return Number.isFinite(latestEnd) && latestEnd <= Date.now();
   }
 
   function approveBooking() {
     if (!request) return;
-
     const assignedRooms = request.assignedRoomIds ?? [];
-
     if (assignedRooms.length === 0) {
       toast.error("Assign at least one room before approving this booking.");
       return;
     }
-
     if (hasBlockingConflicts()) {
       setOverrideAction({
         status: "Approved",
@@ -923,13 +1015,11 @@ export function RequestDetail({
       });
       return;
     }
-
     void runStatusUpdate({ status: "Approved" });
   }
 
   function completeBooking() {
     if (!request) return;
-
     if (!bookingHasEnded()) {
       setOverrideAction({
         status: "Completed",
@@ -940,7 +1030,6 @@ export function RequestDetail({
       });
       return;
     }
-
     void runStatusUpdate({ status: "Completed" });
   }
 
@@ -956,12 +1045,12 @@ export function RequestDetail({
 
   async function onComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     const form = event.currentTarget;
-    const bodyMarkdown = String(new FormData(form).get("comment") ?? "").trim();
-
+    const bodyMarkdown = String(
+      new FormData(form).get("comment") ?? ""
+    ).trim();
     if (!bodyMarkdown) return;
-
+    setCommentBusy(true);
     try {
       await addComment({
         tenantSlug,
@@ -970,485 +1059,942 @@ export function RequestDetail({
         bodyMarkdown,
         internal: !publicView,
       });
-
       toast.success("Comment added.");
       form.reset();
     } catch (caught) {
       toast.error(
         caught instanceof Error ? caught.message : "Unable to add comment."
       );
+    } finally {
+      setCommentBusy(false);
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Public view — email gate
+  // ---------------------------------------------------------------------------
+
   if (publicView && !emailFromUrl) {
     return (
-      <>
-        <SectionHeader eyebrow="Requester tracking" title="Access booking request" />
-        <Card>
-          <form
-            method="get"
-            className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end"
-          >
-            <label>
-              <span className="text-sm font-medium text-foreground">
-                Requester email
-              </span>
-              <input name="email" type="email" required className={formFieldClass} />
-            </label>
-            <button className={primaryButtonClass}>View request</button>
-          </form>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Use the booking reference in the URL and the email address used when
-            submitting the request.
+      <div className="grid gap-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+            Requester tracking
           </p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-foreground">
+            Access booking request
+          </h1>
+        </div>
+        <Card>
+          <CardContent className="pt-4">
+            <form
+              method="get"
+              className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end"
+            >
+              <label>
+                <span className="text-sm font-medium text-foreground">
+                  Requester email
+                </span>
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  className={formFieldClass}
+                />
+              </label>
+              <button className={primaryButtonClass}>View request</button>
+            </form>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Use the booking reference in the URL and the email address used
+              when submitting the request.
+            </p>
+          </CardContent>
         </Card>
-      </>
+      </div>
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Loading / not found states
+  // ---------------------------------------------------------------------------
+
   if (request === undefined) {
     return (
-      <p className="rounded-2xl border border-border bg-card/80 p-5 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-card/80 p-5 text-sm text-muted-foreground">
+        <LoaderCircle className="size-4 animate-spin" aria-hidden />
         Loading request...
-      </p>
+      </div>
     );
   }
 
   if (!request) {
     return (
-      <p className="rounded-2xl border border-dashed border-border bg-card/80 p-5 text-sm text-muted-foreground">
+      <div className="rounded-xl border border-dashed border-border bg-card/80 p-8 text-center text-sm text-muted-foreground">
+        <FileText className="mx-auto mb-2 size-8 opacity-30" aria-hidden />
         Request not found.
-      </p>
+      </div>
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Derived values
+  // ---------------------------------------------------------------------------
+
   const sessionLength = sessionDurationMinutes(request.blocks);
   const occupancyLength = occupancyDurationMinutes(request.blocks);
+  const hasConflicts = Boolean(
+    request.conflictMetadata?.conflicts?.length
+  );
+  const hasBlockingConflict = hasBlockingConflicts();
+  const sessionBlock = request.blocks.find(
+    (b: { label?: string }) => b.label === "Session"
+  ) ?? request.blocks[0];
+
+  // ---------------------------------------------------------------------------
+  // Page render
+  // ---------------------------------------------------------------------------
 
   return (
-    <>
-      <SectionHeader
-        eyebrow={publicView ? "Requester tracking" : request._id}
-        title={request.sessionName}
-        action={<StatusPill status={request.status} />}
-      />
+    <div className="grid gap-6">
+      {/* ------------------------------------------------------------------ */}
+      {/* Header                                                               */}
+      {/* ------------------------------------------------------------------ */}
+      <header>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              {!publicView ? (
+                <p className="text-xs font-mono text-muted-foreground">
+                  {request._id}
+                </p>
+              ) : null}
+              <StatusBadge status={request.status} />
+              {hasBlockingConflict && !publicView ? (
+                <Badge
+                  variant="outline"
+                  className="border-destructive/35 bg-destructive/10 text-destructive text-xs"
+                >
+                  <AlertTriangle className="size-3" aria-hidden />
+                  Conflicts
+                </Badge>
+              ) : null}
+            </div>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground text-balance sm:text-3xl">
+              {request.sessionName}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <User className="size-3.5" aria-hidden />
+                {request.requesterName}
+              </span>
+              {sessionBlock ? (
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="size-3.5" aria-hidden />
+                  {formatRequestDate(request)}
+                </span>
+              ) : null}
+              <span className="flex items-center gap-1.5">
+                <Clock className="size-3.5" aria-hidden />
+                {sessionLength !== null
+                  ? formatBookingDuration(sessionLength)
+                  : "Unknown duration"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </header>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <div className="grid gap-5">
-          <Card>
-            <h2 className="font-semibold">Requester and booking blocks</h2>
+      {/* ------------------------------------------------------------------ */}
+      {/* Booking notice violations (staff/admin only)                        */}
+      {/* ------------------------------------------------------------------ */}
+      {!publicView && request.bookingNoticeMetadata?.violations.length ? (
+        <div
+          className="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40"
+          role="alert"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Booking notice review required
+                </p>
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 bg-amber-100 text-amber-900 text-xs dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200"
+                >
+                  Additional approval
+                </Badge>
+              </div>
+              <ul className="mt-2 grid gap-1">
+                {request.bookingNoticeMetadata.violations.map((violation) => (
+                  <li
+                    key={violation.type}
+                    className="text-sm text-amber-800 dark:text-amber-300"
+                  >
+                    {violation.message}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-amber-700 dark:text-amber-400">
+                <span>
+                  Policy mode:{" "}
+                  <strong className="text-amber-900 dark:text-amber-200">
+                    {request.bookingNoticeMetadata.rules.violationMode}
+                  </strong>
+                </span>
+                <span>
+                  Override acknowledged:{" "}
+                  <strong className="text-amber-900 dark:text-amber-200">
+                    {request.bookingNoticeMetadata.overrideAcknowledged
+                      ? "Yes"
+                      : "No"}
+                  </strong>
+                </span>
+                {request.bookingNoticeMetadata.overriddenByRole ? (
+                  <span>
+                    Overridden by:{" "}
+                    <strong className="text-amber-900 dark:text-amber-200">
+                      {request.bookingNoticeMetadata.overriddenByRole}
+                    </strong>
+                  </span>
+                ) : null}
+                {request.bookingNoticeMetadata.overrideReason ? (
+                  <span>
+                    Reason:{" "}
+                    <strong className="text-amber-900 dark:text-amber-200">
+                      {request.bookingNoticeMetadata.overrideReason}
+                    </strong>
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
-            <dl className="mt-4 grid gap-3 md:grid-cols-3">
+      {/* ------------------------------------------------------------------ */}
+      {/* Two-column layout                                                    */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
+        {/* ================================================================ */}
+        {/* Main column                                                        */}
+        {/* ================================================================ */}
+        <div className="grid content-start gap-5">
+          {/* -------------------------------------------------------------- */}
+          {/* Booking overview                                                 */}
+          {/* -------------------------------------------------------------- */}
+          <CollapsibleCard title="Booking overview" icon={Info} defaultOpen={true}>
+            <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <dt className="text-sm text-muted-foreground">Requester</dt>
-                <dd className="font-medium">{request.requesterName}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Attendees</dt>
-                <dd className="font-medium">{request.attendeeCount}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Rooms</dt>
-                <dd className="font-medium">{formatRooms(request)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Room request mode</dt>
-                <dd className="font-medium">
-                  {request.roomSelectionMode === "SpecificRooms"
-                    ? "Specific rooms"
-                    : "Room type quantity"}
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Requester
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
+                  {request.requesterName}
                 </dd>
               </div>
               <div>
-                <dt className="text-sm text-muted-foreground">Allocation</dt>
-                <dd className="font-medium">
-                  {formatAllocationStatus(request.allocationStatus)}
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Email
+                </dt>
+                <dd className="mt-1 text-sm text-foreground">
+                  {request.requesterEmail}
                 </dd>
               </div>
               <div>
-                <dt className="text-sm text-muted-foreground">Email</dt>
-                <dd className="font-medium">{request.requesterEmail}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-muted-foreground">Phone</dt>
-                <dd className="font-medium">
-                  {request.requesterPhone || "Not provided"}
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Phone
+                </dt>
+                <dd className="mt-1 text-sm text-foreground">
+                  {request.requesterPhone || (
+                    <span className="italic text-muted-foreground">
+                      Not provided
+                    </span>
+                  )}
                 </dd>
               </div>
               <div>
-                <dt className="text-sm text-muted-foreground">CC</dt>
-                <dd className="font-medium">
-                  {request.ccEmails.length ? request.ccEmails.join(", ") : "None"}
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Attendees
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
+                  {request.attendeeCount}
                 </dd>
               </div>
               <div>
-                <dt className="text-sm text-muted-foreground">Session length</dt>
-                <dd className="font-medium">
+                <dt className="text-xs font-medium text-muted-foreground">
+                  CC emails
+                </dt>
+                <dd className="mt-1 text-sm text-foreground">
+                  {request.ccEmails.length ? (
+                    request.ccEmails.join(", ")
+                  ) : (
+                    <span className="italic text-muted-foreground">None</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Session duration
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
                   {sessionLength !== null
                     ? formatBookingDuration(sessionLength)
                     : "Invalid"}
                 </dd>
               </div>
               <div>
-                <dt className="text-sm text-muted-foreground">
+                <dt className="text-xs font-medium text-muted-foreground">
                   Reserved room time
                 </dt>
-                <dd className="font-medium">
+                <dd className="mt-1 text-sm font-medium text-foreground">
                   {occupancyLength !== null
                     ? formatBookingDuration(occupancyLength)
                     : "Invalid"}
                 </dd>
               </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Room request mode
+                </dt>
+                <dd className="mt-1 text-sm font-medium text-foreground">
+                  {request.roomSelectionMode === "SpecificRooms"
+                    ? "Specific rooms"
+                    : "Room type quantity"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">
+                  Rooms
+                </dt>
+                <dd className="mt-1 text-sm text-foreground">
+                  {formatRooms(request)}
+                </dd>
+              </div>
             </dl>
 
-            <div className="mt-4 grid gap-2">
+            {/* Details / notes */}
+            {request.details ? (
+              <>
+                <Separator className="my-4" />
+                <div>
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    Additional details
+                  </p>
+                  <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-foreground leading-relaxed">
+                    {request.details}
+                  </p>
+                </div>
+              </>
+            ) : null}
+          </CollapsibleCard>
+
+          {/* -------------------------------------------------------------- */}
+          {/* Session timings                                                  */}
+          {/* -------------------------------------------------------------- */}
+          <CollapsibleCard title="Session timings" icon={CalendarDays} defaultOpen={true}>
+            <ol className="grid gap-2">
+              {request.blocks.map(
+                (block: { label?: string; start: string; end: string }) => (
+                  <li
+                    key={`${block.label}-${block.start}`}
+                    className="flex items-start gap-3 rounded-lg bg-muted/40 px-3 py-2.5 text-sm"
+                  >
+                    <span className="mt-0.5 min-w-[4.5rem] text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {block.label ?? "Block"}
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {formatBlockTime(block, request.timezone)}
+                    </span>
+                  </li>
+                )
+              )}
+            </ol>
+          </CollapsibleCard>
+
+          {/* -------------------------------------------------------------- */}
+          {/* Room requests + allocation                                       */}
+          {/* -------------------------------------------------------------- */}
+          <CollapsibleCard
+            title="Room allocation"
+            icon={Search}
+            defaultOpen={!(request.assignedRoomIds?.length ?? 0)}
+            badge={
+              <Badge variant="outline" className="text-xs font-normal">
+                {formatAllocationStatus(request.allocationStatus)}
+              </Badge>
+            }
+          >
+            <div className="grid gap-3">
+              {/* Specific rooms requested */}
               {request.requestedRooms?.length ? (
-                <div className="rounded-xl border border-border bg-muted/40 p-3">
-                  <p className="text-sm font-medium text-foreground">
-                    Requested exact rooms
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Requested rooms
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {request.requestedRooms.map((room) => (
-                      <Badge key={room._id} variant="outline">
-                        {room.name} ({room.code}) · {room.capacity}
-                      </Badge>
-                    ))}
+                  <div className="flex flex-wrap gap-1.5">
+                    {request.requestedRooms.map(
+                      (room: { _id: string; name: string; code: string; capacity: number }) => (
+                        <Badge key={room._id} variant="outline" className="text-xs">
+                          {room.name} ({room.code}) &middot; cap {room.capacity}
+                        </Badge>
+                      )
+                    )}
                   </div>
                 </div>
               ) : null}
 
+              {/* Room type quantities requested */}
               {request.roomTypeRequestDetails?.length ? (
-                <div className="rounded-xl border border-border bg-muted/40 p-3">
-                  <p className="text-sm font-medium text-foreground">
-                    Requested room type quantities
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Requested room types
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {request.roomTypeRequestDetails.map((item) => (
-                      <Badge key={item.roomTypeId} variant="outline">
-                        {item.quantity} {item.roomTypeName}
-                        {item.quantity === 1 ? "" : "s"} · ~
-                        {item.quantity * item.defaultCapacity}
-                      </Badge>
-                    ))}
+                  <div className="flex flex-wrap gap-1.5">
+                    {request.roomTypeRequestDetails.map(
+                      (item: { roomTypeId: string; quantity: number; roomTypeName: string; defaultCapacity: number }) => (
+                        <Badge key={item.roomTypeId} variant="outline" className="text-xs">
+                          {item.quantity}&times;{" "}
+                          {item.roomTypeName}
+                          {item.quantity === 1 ? "" : "s"} &middot; ~
+                          {item.quantity * item.defaultCapacity} cap
+                        </Badge>
+                      )
+                    )}
                   </div>
                 </div>
               ) : null}
 
-              {!publicView && auth ? (
-                <ManualAllocationPanel
-                  key={`${request._id}-${request.updatedAt}`}
-                  request={request}
-                  rooms={rooms}
-                  tenantSlug={tenantSlug}
-                  auth={auth}
-                />
-              ) : null}
-            </div>
-
-            <p className="mt-4 rounded-xl bg-card/80 p-3 text-sm text-foreground">
-              {request.details}
-            </p>
-
-            <div className="mt-4 grid gap-2">
-              {request.blocks.map((block) => (
-                <p
-                  key={`${block.label}-${block.start}`}
-                  className="rounded-xl bg-muted p-3 text-sm"
-                >
-                  {block.label}: {formatBlockTime(block, request.timezone)}
-                </p>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <h2 className="font-semibold">Custom form inputs</h2>
-            <div className="mt-3 grid gap-2">
-              {request.customInputs.map((field) => (
-                <p key={field.fieldId} className="text-sm text-muted-foreground">
-                  {field.label}:{" "}
-                  <span className="text-foreground">{String(field.value)}</span>
-                </p>
-              ))}
-              {request.customInputs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No custom inputs captured.
-                </p>
-              ) : null}
-            </div>
-          </Card>
-
-          <Card>
-            <h2 className="font-semibold">Comments</h2>
-            <div className="mt-3 grid gap-2">
-              {request.comments.map((comment) => (
-                <div
-                  key={comment._id}
-                  className="rounded-xl bg-card/80 p-3 text-sm text-muted-foreground"
-                >
-                  <p className="text-foreground">{comment.bodyMarkdown}</p>
-                  <p className="mt-2 text-xs">
-                    {comment.authorName ?? "Unknown author"} ·{" "}
-                    {formatAuditTime(comment.createdAt)}
-                    {comment.editedAt
-                      ? ` · edited ${formatAuditTime(comment.editedAt)}`
-                      : ""}
+              {/* Assigned rooms (read-only view for non-staff) */}
+              {!isStaffOrAbove &&
+              (request.assignedRooms?.length ||
+                request.assignedRoomIds?.length) ? (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Assigned rooms
                   </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(request.assignedRooms ?? []).map(
+                      (room: { _id: string; code: string; name: string }) => (
+                        <Badge key={room._id} variant="outline" className="text-xs">
+                          {formatRoomChip(room)}
+                        </Badge>
+                      )
+                    )}
+                  </div>
                 </div>
-              ))}
-              {request.comments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No comments yet.</p>
+              ) : null}
+
+              {/* No rooms state (non-staff) */}
+              {!isStaffOrAbove &&
+              !request.requestedRooms?.length &&
+              !request.roomTypeRequestDetails?.length &&
+              !request.assignedRooms?.length ? (
+                <p className="text-sm italic text-muted-foreground">
+                  No room information available.
+                </p>
               ) : null}
             </div>
+
+            {/* Staff/admin: allocation management panel */}
+            {!publicView && auth && isStaffOrAbove ? (
+              <ManualAllocationPanel
+                key={`${request._id}-${request.updatedAt}`}
+                request={request}
+                rooms={rooms}
+                tenantSlug={tenantSlug}
+                auth={auth}
+              />
+            ) : null}
+          </CollapsibleCard>
+
+          {/* -------------------------------------------------------------- */}
+          {/* Custom form inputs                                               */}
+          {/* -------------------------------------------------------------- */}
+          {request.customInputs.length > 0 ? (
+            <CollapsibleCard title="Custom form inputs" defaultOpen={true}>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                {request.customInputs.map(
+                  (field: { fieldId: string; label: string; value: unknown }) => (
+                    <div key={field.fieldId}>
+                      <dt className="text-xs font-medium text-muted-foreground">
+                        {field.label}
+                      </dt>
+                      <dd className="mt-1 text-sm text-foreground">
+                        {field.value !== null &&
+                        field.value !== undefined &&
+                        String(field.value) !== "" ? (
+                          String(field.value)
+                        ) : (
+                          <span className="italic text-muted-foreground">
+                            Not provided
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  )
+                )}
+              </dl>
+            </CollapsibleCard>
+          ) : null}
+
+          {/* -------------------------------------------------------------- */}
+          {/* Comments                                                         */}
+          {/* -------------------------------------------------------------- */}
+          <CollapsibleCard
+            title="Comments"
+            icon={MessageSquare}
+            defaultOpen={true}
+            badge={
+              request.comments.length > 0 ? (
+                <Badge variant="outline" className="text-xs">
+                  {request.comments.length}
+                </Badge>
+              ) : null
+            }
+          >
+            {request.comments.length > 0 ? (
+              <ol className="grid gap-3">
+                {request.comments.map(
+                  (comment: {
+                    _id: string;
+                    bodyMarkdown: string;
+                    authorName?: string;
+                    createdAt: number;
+                    editedAt?: number;
+                  }) => (
+                    <li
+                      key={comment._id}
+                      className="rounded-xl border border-border bg-muted/30 p-4"
+                    >
+                      <p className="text-sm leading-relaxed text-foreground">
+                        {comment.bodyMarkdown}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="font-medium">
+                          {comment.authorName ?? "Unknown"}
+                        </span>
+                        <span aria-hidden>&middot;</span>
+                        <time
+                          dateTime={new Date(comment.createdAt).toISOString()}
+                        >
+                          {formatAuditTime(comment.createdAt)}
+                        </time>
+                        {comment.editedAt ? (
+                          <>
+                            <span aria-hidden>&middot;</span>
+                            <span>
+                              edited{" "}
+                              <time
+                                dateTime={new Date(
+                                  comment.editedAt
+                                ).toISOString()}
+                              >
+                                {formatAuditTime(comment.editedAt)}
+                              </time>
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                )}
+              </ol>
+            ) : (
+              <p className="text-sm italic text-muted-foreground">
+                No comments yet.
+              </p>
+            )}
 
             {!publicView ? (
-              <form onSubmit={onComment} className="mt-3 grid gap-2">
-                <textarea
-                  name="comment"
-                  placeholder="Add a comment..."
-                  className="min-h-24 rounded-xl border border-border px-3 py-2 text-sm"
-                />
-                <button className="justify-self-start rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">
-                  Add comment
-                </button>
-              </form>
+              <>
+                {request.comments.length > 0 ? (
+                  <Separator className="my-4" />
+                ) : null}
+                <form onSubmit={onComment} className="grid gap-3">
+                  <label htmlFor="comment-body" className="sr-only">
+                    Add a comment
+                  </label>
+                  <Textarea
+                    id="comment-body"
+                    name="comment"
+                    placeholder="Add a comment..."
+                    className="min-h-24 text-sm"
+                    disabled={commentBusy}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={commentBusy}
+                    >
+                      {commentBusy ? (
+                        <LoaderCircle
+                          className="size-3.5 animate-spin"
+                          aria-hidden
+                        />
+                      ) : (
+                        <MessageSquare className="size-3.5" aria-hidden />
+                      )}
+                      Add comment
+                    </Button>
+                  </div>
+                </form>
+              </>
             ) : null}
-          </Card>
+          </CollapsibleCard>
 
-          <BookingTimeline
+          {/* -------------------------------------------------------------- */}
+          {/* Activity timeline                                                */}
+          {/* -------------------------------------------------------------- */}
+          <ActivityTimelineCard
             events={timeline as TimelineEvent[] | undefined}
             rooms={rooms}
           />
         </div>
 
+        {/* ================================================================ */}
+        {/* Sidebar column                                                     */}
+        {/* ================================================================ */}
         <div className="grid content-start gap-5">
-          {!publicView && request.bookingNoticeMetadata?.violations.length ? (
-            <Card>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="font-semibold">Booking notice review</h2>
-                <Badge
-                  variant="outline"
-                  className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+          {/* -------------------------------------------------------------- */}
+          {/* Workflow actions — staff/admin/developer only                    */}
+          {/* -------------------------------------------------------------- */}
+          {!publicView && isStaffOrAbove ? (
+            <CollapsibleCard title="Workflow actions" defaultOpen={true}>
+              {hasConflicts ? (
+                <div
+                  className="mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
+                  role="alert"
                 >
-                  Additional approval
-                </Badge>
-              </div>
-              <div className="mt-3 grid gap-2">
-                {request.bookingNoticeMetadata.violations.map((violation) => (
-                  <p
-                    key={violation.type}
-                    className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-                  >
-                    {violation.message}
-                  </p>
-                ))}
-              </div>
-              <div className="mt-3 grid gap-1 text-sm text-muted-foreground">
-                <p>
-                  Policy mode:{" "}
-                  <span className="font-medium text-foreground">
-                    {request.bookingNoticeMetadata.rules.violationMode}
-                  </span>
-                </p>
-                <p>
-                  Override acknowledged:{" "}
-                  <span className="font-medium text-foreground">
-                    {request.bookingNoticeMetadata.overrideAcknowledged
-                      ? "Yes"
-                      : "No"}
-                  </span>
-                </p>
-                {request.bookingNoticeMetadata.overriddenByRole ? (
+                  <AlertTriangle
+                    className="mt-0.5 size-4 shrink-0"
+                    aria-hidden
+                  />
                   <p>
-                    Overridden by role:{" "}
-                    <span className="font-medium text-foreground">
-                      {request.bookingNoticeMetadata.overriddenByRole}
-                    </span>
+                    Availability warnings detected. Approval may require a
+                    staff override.
                   </p>
-                ) : null}
-                {request.bookingNoticeMetadata.overrideReason ? (
-                  <p>
-                    Override reason:{" "}
-                    <span className="font-medium text-foreground">
-                      {request.bookingNoticeMetadata.overrideReason}
-                    </span>
-                  </p>
-                ) : null}
-              </div>
-            </Card>
-          ) : null}
-
-          {!publicView ? (
-            <Card>
-              <h2 className="font-semibold">Workflow actions</h2>
-
-              {request.conflictMetadata?.conflicts.length ? (
-                <p className="mt-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                  This request has availability warnings or conflicts. Approval
-                  may require a staff override.
-                </p>
+                </div>
               ) : null}
 
-              <div className="mt-3 grid gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={approveBooking}
-                  disabled={statusBusy}
-                >
-                  Approve
-                </Button>
+              <div className="grid gap-2">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        onClick={approveBooking}
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        {statusBusy ? (
+                          <LoaderCircle
+                            className="size-4 animate-spin"
+                            aria-hidden
+                          />
+                        ) : (
+                          <CheckCircle className="size-4" aria-hidden />
+                        )}
+                        Approve
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Approve and confirm the booking. A room must be assigned
+                    first.
+                  </TooltipContent>
+                </Tooltip>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => openReasonDialog("Declined")}
-                  disabled={statusBusy}
-                >
-                  Decline
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => openReasonDialog("Declined")}
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        Decline
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Decline this booking request with an optional reason.
+                  </TooltipContent>
+                </Tooltip>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => openReasonDialog("Cancelled")}
-                  disabled={statusBusy}
-                >
-                  Cancel
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => openReasonDialog("Cancelled")}
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        Cancel
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Cancel this booking with an optional reason.
+                  </TooltipContent>
+                </Tooltip>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void runStatusUpdate({ status: "Pending" })}
-                  disabled={statusBusy}
-                >
-                  Move to Pending
-                </Button>
+                <Separator />
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={completeBooking}
-                  disabled={statusBusy}
-                >
-                  Mark Completed
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          void runStatusUpdate({ status: "Pending" })
+                        }
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        Move to Pending
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Return the booking to Pending for further review.
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={completeBooking}
+                        disabled={statusBusy}
+                        className="w-full"
+                      >
+                        Mark Completed
+                      </Button>
+                    }
+                  />
+                  <TooltipContent side="left">
+                    Mark as completed. Requires a staff override if the
+                    booking has not yet ended.
+                  </TooltipContent>
+                </Tooltip>
               </div>
-            </Card>
+            </CollapsibleCard>
           ) : null}
 
+          {/* -------------------------------------------------------------- */}
+          {/* Availability conflicts (staff/admin only)                       */}
+          {/* -------------------------------------------------------------- */}
           {!publicView ? (
-            <Card>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="font-semibold">Availability conflicts</h2>
-                {request.conflictMetadata?.highestSeverity ? (
+            <CollapsibleCard
+              title="Availability"
+              defaultOpen={true}
+              badge={
+                request.conflictMetadata?.highestSeverity ? (
                   <Badge
                     variant="outline"
-                    className={severityClass(
+                    className={`text-xs ${severityClass(request.conflictMetadata.highestSeverity)}`}
+                  >
+                    {severityLabel(
                       request.conflictMetadata.highestSeverity
                     )}
-                  >
-                    {severityLabel(request.conflictMetadata.highestSeverity)}
                   </Badge>
                 ) : (
                   <Badge
                     variant="outline"
-                    className="border-primary/30 bg-primary/10 text-primary"
+                    className="border-primary/30 bg-primary/10 text-primary text-xs"
                   >
                     Clear
                   </Badge>
-                )}
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {request.conflictMetadata?.summary ??
-                  "No availability conflicts detected."}
-              </p>
-              <div className="mt-3 grid gap-2">
-                {request.conflictMetadata?.conflicts.map((conflict, index) => (
-                  <div
-                    key={`${conflict.type}-${index}`}
-                    className={`rounded-xl border p-3 text-sm ${severityClass(
-                      conflict.severity
-                    )}`}
-                  >
-                    <div className="flex items-start gap-2">
-                      {conflict.severity === "informational" ? (
-                        <Info className="mt-0.5 size-4 shrink-0" />
-                      ) : (
-                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                      )}
-                      <div className="min-w-0">
-                        <p className="font-medium">{conflict.message}</p>
-                        <div className="mt-2 grid gap-1 text-xs opacity-85">
-                          <div>Type: {conflict.type}</div>
-                          {conflict.roomCode ? (
-                            <div>
-                              Room: {conflict.roomCode}{" "}
-                              {conflict.roomName ? `(${conflict.roomName})` : ""}
-                            </div>
-                          ) : null}
-                          {conflict.roomTypeName ? (
-                            <div>Room type: {conflict.roomTypeName}</div>
-                          ) : null}
-                          {conflict.campusName ? (
-                            <div>Campus: {conflict.campusName}</div>
-                          ) : null}
-                          {conflict.blockedReason ? (
-                            <div>Blocked reason: {conflict.blockedReason}</div>
-                          ) : null}
-                          {conflict.conflictingRequestId ? (
-                            <div>
-                              Conflicting request: {conflict.conflictingRequestId}
-                            </div>
-                          ) : null}
-                          {conflict.requestedQuantity !== undefined ? (
-                            <div>
-                              Requested quantity: {conflict.requestedQuantity}
-                            </div>
-                          ) : null}
-                          {conflict.availableQuantity !== undefined ? (
-                            <div>
-                              Available quantity: {conflict.availableQuantity}
-                            </div>
-                          ) : null}
-                          {conflict.missingQuantity !== undefined ? (
-                            <div>Missing quantity: {conflict.missingQuantity}</div>
-                          ) : null}
-                          {conflict.unavailableRooms?.length ? (
-                            <div>
-                              Unavailable rooms:{" "}
-                              {conflict.unavailableRooms
-                                .map((room) => `${room.code} (${room.reason})`)
-                                .join(", ")}
-                            </div>
-                          ) : null}
+                )
+              }
+            >
+              {request.conflictMetadata?.summary ? (
+                <p className="mb-3 text-sm text-muted-foreground">
+                  {request.conflictMetadata.summary}
+                </p>
+              ) : null}
+
+              {request.conflictMetadata?.conflicts.length ? (
+                <div className="grid gap-2" role="list" aria-label="Conflicts">
+                  {request.conflictMetadata.conflicts.map(
+                    (conflict: {
+                      type: string;
+                      severity: string;
+                      message: string;
+                      roomCode?: string;
+                      roomName?: string;
+                      roomTypeName?: string;
+                      campusName?: string;
+                      blockedReason?: string;
+                      conflictingRequestId?: string;
+                      requestedQuantity?: number;
+                      availableQuantity?: number;
+                      missingQuantity?: number;
+                      unavailableRooms?: Array<{ code: string; reason: string }>;
+                    }, index: number) => (
+                      <div
+                        key={`${conflict.type}-${index}`}
+                        className={`rounded-xl border p-3 text-sm ${severityClass(conflict.severity)}`}
+                        role="listitem"
+                      >
+                        <div className="flex items-start gap-2">
+                          {conflict.severity === "informational" ? (
+                            <Info
+                              className="mt-0.5 size-4 shrink-0"
+                              aria-hidden
+                            />
+                          ) : (
+                            <AlertTriangle
+                              className="mt-0.5 size-4 shrink-0"
+                              aria-hidden
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium">
+                              {conflict.message}
+                            </p>
+                            <dl className="mt-2 grid gap-0.5 text-xs opacity-85">
+                              <div>
+                                <dt className="sr-only">Type</dt>
+                                <dd>Type: {conflict.type}</dd>
+                              </div>
+                              {conflict.roomCode ? (
+                                <div>
+                                  <dt className="sr-only">Room</dt>
+                                  <dd>
+                                    Room: {conflict.roomCode}{" "}
+                                    {conflict.roomName
+                                      ? `(${conflict.roomName})`
+                                      : ""}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.roomTypeName ? (
+                                <div>
+                                  <dt className="sr-only">Room type</dt>
+                                  <dd>
+                                    Room type: {conflict.roomTypeName}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.campusName ? (
+                                <div>
+                                  <dt className="sr-only">Campus</dt>
+                                  <dd>Campus: {conflict.campusName}</dd>
+                                </div>
+                              ) : null}
+                              {conflict.blockedReason ? (
+                                <div>
+                                  <dt className="sr-only">Blocked reason</dt>
+                                  <dd>
+                                    Blocked: {conflict.blockedReason}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.requestedQuantity !== undefined ? (
+                                <div>
+                                  <dt className="sr-only">
+                                    Requested quantity
+                                  </dt>
+                                  <dd>
+                                    Requested: {conflict.requestedQuantity}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.availableQuantity !== undefined ? (
+                                <div>
+                                  <dt className="sr-only">
+                                    Available quantity
+                                  </dt>
+                                  <dd>
+                                    Available: {conflict.availableQuantity}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.missingQuantity !== undefined ? (
+                                <div>
+                                  <dt className="sr-only">
+                                    Missing quantity
+                                  </dt>
+                                  <dd>
+                                    Missing: {conflict.missingQuantity}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {conflict.unavailableRooms?.length ? (
+                                <div>
+                                  <dt className="sr-only">
+                                    Unavailable rooms
+                                  </dt>
+                                  <dd>
+                                    Unavailable:{" "}
+                                    {conflict.unavailableRooms
+                                      .map(
+                                        (r) => `${r.code} (${r.reason})`
+                                      )
+                                      .join(", ")}
+                                  </dd>
+                                </div>
+                              ) : null}
+                            </dl>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
-
-                {request.conflictMetadata?.conflicts.length === 0 ||
-                !request.conflictMetadata ? (
-                  <p className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-                    No conflicts detected against approved bookings, pending
-                    bookings, or blocked periods.
-                  </p>
-                ) : null}
-              </div>
-            </Card>
+                    )
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
+                  <CheckCircle className="size-4 shrink-0 text-primary" aria-hidden />
+                  No conflicts detected against approved bookings, pending
+                  bookings, or blocked periods.
+                </div>
+              )}
+            </CollapsibleCard>
           ) : null}
 
-          <Card>
-            <h2 className="font-semibold">Files</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {request.attachmentStorageIds.length} attachment(s)
-            </p>
-          </Card>
+          {/* -------------------------------------------------------------- */}
+          {/* Files                                                            */}
+          {/* -------------------------------------------------------------- */}
+          <CollapsibleCard
+            title="Files"
+            icon={FileText}
+            defaultOpen={true}
+            badge={
+              <Badge variant="outline" className="text-xs">
+                {request.attachmentStorageIds.length}
+              </Badge>
+            }
+          >
+            {request.attachmentStorageIds.length === 0 ? (
+              <p className="text-sm italic text-muted-foreground">
+                No attachments uploaded.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {request.attachmentStorageIds.length} attachment
+                {request.attachmentStorageIds.length === 1 ? "" : "s"}.
+              </p>
+            )}
+          </CollapsibleCard>
         </div>
       </div>
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Dialogs                                                              */}
+      {/* ------------------------------------------------------------------ */}
+
+      {/* Override confirmation */}
       <AlertDialog
         open={overrideAction !== null}
         onOpenChange={(open) => {
@@ -1462,17 +2008,14 @@ export function RequestDetail({
               {overrideAction?.description}
             </AlertDialogDescription>
           </AlertDialogHeader>
-
           <AlertDialogFooter>
             <AlertDialogCancel disabled={statusBusy}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={statusBusy}
               onClick={() => {
                 if (!overrideAction) return;
-
                 const action = overrideAction;
                 setOverrideAction(null);
-
                 void runStatusUpdate({
                   status: action.status,
                   allowConflictOverride: action.overrideType === "conflict",
@@ -1486,6 +2029,7 @@ export function RequestDetail({
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Reason/comment dialog */}
       <Dialog
         open={reasonAction !== null}
         onOpenChange={(open) => {
@@ -1500,13 +2044,15 @@ export function RequestDetail({
             <DialogTitle>{reasonAction?.title}</DialogTitle>
             <DialogDescription>{reasonAction?.description}</DialogDescription>
           </DialogHeader>
-
           <div className="grid gap-2">
             <label
               htmlFor="status-reason"
               className="text-sm font-medium text-foreground"
             >
-              Reason/comment optional
+              Reason / comment{" "}
+              <span className="text-muted-foreground font-normal">
+                (optional)
+              </span>
             </label>
             <Textarea
               id="status-reason"
@@ -1515,7 +2061,6 @@ export function RequestDetail({
               placeholder="Add a short reason or leave blank."
             />
           </div>
-
           <DialogFooter>
             <Button
               type="button"
@@ -1530,22 +2075,25 @@ export function RequestDetail({
             </Button>
             <Button
               type="button"
+              variant={
+                reasonAction?.status === "Declined" ? "destructive" : "default"
+              }
               disabled={statusBusy}
               onClick={() => {
                 if (!reasonAction) return;
-
                 const action = reasonAction;
                 const reason = statusReason.trim();
-
                 setReasonAction(null);
                 setStatusReason("");
-
                 void runStatusUpdate({
                   status: action.status,
                   reason: reason || undefined,
                 });
               }}
             >
+              {statusBusy ? (
+                <LoaderCircle className="size-4 animate-spin" aria-hidden />
+              ) : null}
               {reasonAction?.status === "Declined"
                 ? "Decline booking"
                 : "Cancel booking"}
@@ -1553,6 +2101,6 @@ export function RequestDetail({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
