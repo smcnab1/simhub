@@ -21,6 +21,7 @@ import { useDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { enGB } from "date-fns/locale"
 import {
   Popover,
   PopoverContent,
@@ -737,6 +738,7 @@ export function ResourceCalendar() {
                   <Calendar
                     mode="single"
                     selected={selectedDate}
+                    locale={enGB}
                     onSelect={(date) => {
                       if (!date) return;
                       setSelectedDateString(localDateToPlainDate(date));
