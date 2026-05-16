@@ -44,20 +44,28 @@ export function actorFromUser(user?: Doc<"users"> | null): AuditActorSnapshot {
   };
 }
 
+function serialisableAuditValue(value: unknown) {
+  return value === undefined ? null : value;
+}
+
 export function compactDiff<T extends Record<string, unknown>>(
   before: T,
   after: T,
   fields: Array<keyof T>
 ): AuditDiffEntry[] {
   return fields.flatMap((field) => {
-    const beforeValue = before[field];
-    const afterValue = after[field];
+    const beforeValue = serialisableAuditValue(before[field]);
+    const afterValue = serialisableAuditValue(after[field]);
 
     if (JSON.stringify(beforeValue) === JSON.stringify(afterValue)) {
       return [];
     }
 
-    return [{ field: String(field), before: beforeValue, after: afterValue }];
+    return {
+      field: String(field),
+      before: beforeValue,
+      after: afterValue,
+    };
   });
 }
 

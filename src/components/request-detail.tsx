@@ -87,7 +87,162 @@ function eventMetadata(event: TimelineEvent) {
     : {};
 }
 
-function TimelineDetails({ event }: { event: TimelineEvent }) {
+function formatAllocationStatus(value: unknown) {
+  if (value === null || value === undefined || value === "") return "Not allocated";
+
+  const labels: Record<string, string> = {
+    Unallocated: "Not allocated",
+    AutoAllocated: "Auto-allocated",
+    ManualReviewRequired: "Needs manual review",
+    ManuallyAdjusted: "Manually adjusted",
+    Conflict: "Conflict detected",
+  };
+
+  return labels[String(value)] ?? String(value);
+}
+
+function getRoomLabel(roomId: unknown, rooms?: RoomOption[]) {
+  if (typeof roomId !== "string") return "Unknown room";
+
+  const room = rooms?.find((item) => String(item._id) === roomId);
+
+  if (!room) return "Unknown room";
+
+  return `${room.code}`;
+}
+
+function toRoomIdArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function getRoomDiff(before: unknown, after: unknown, rooms?: RoomOption[]) {
+  const beforeIds = new Set(toRoomIdArray(before));
+  const afterIds = new Set(toRoomIdArray(after));
+
+  const added = [...afterIds]
+    .filter((roomId) => !beforeIds.has(roomId))
+    .map((roomId) => getRoomLabel(roomId, rooms));
+
+  const removed = [...beforeIds]
+    .filter((roomId) => !afterIds.has(roomId))
+    .map((roomId) => getRoomLabel(roomId, rooms));
+
+  return { added, removed };
+}
+
+function humanFieldLabel(field: string) {
+  const labels: Record<string, string> = {
+    assignedRoomIds: "Rooms",
+    allocationStatus: "Allocation status",
+    allocationNotes: "Allocation notes",
+    status: "Booking status",
+  };
+
+  return labels[field] ?? field;
+}
+
+function humanValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "None";
+
+  if (Array.isArray(value)) {
+    return value.length ? value.join(", ") : "None";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "object") {
+    return "Updated";
+  }
+
+  return String(value);
+}
+
+function AllocationChangeSummary({
+  diff,
+  rooms,
+}: {
+  diff: NonNullable<TimelineEvent["diff"]>;
+  rooms?: RoomOption[];
+}) {
+  const roomEntry = diff.find((entry) => entry.field === "assignedRoomIds");
+  const statusEntry = diff.find((entry) => entry.field === "allocationStatus");
+
+  const roomChanges = roomEntry
+    ? getRoomDiff(roomEntry.before, roomEntry.after, rooms)
+    : { added: [], removed: [] };
+
+  const statusChanged =
+    statusEntry &&
+    formatAllocationStatus(statusEntry.before) !== formatAllocationStatus(statusEntry.after);
+
+  const summaryParts: string[] = [];
+
+  if (roomChanges.added.length) {
+    summaryParts.push(
+      `${roomChanges.added.length} room${roomChanges.added.length === 1 ? "" : "s"} assigned`
+    );
+  }
+
+  if (roomChanges.removed.length) {
+    summaryParts.push(
+      `${roomChanges.removed.length} room${roomChanges.removed.length === 1 ? "" : "s"} removed`
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-border bg-background p-3 text-sm">
+      <p className="font-medium text-foreground">Room allocation updated</p>
+
+      <div className="mt-1 text-muted-foreground">
+        {summaryParts.length ? summaryParts.join(", ") : "Allocation updated"}
+      </div>
+
+      {statusChanged ? (
+        <div className="text-muted-foreground">
+          Status changed to {formatAllocationStatus(statusEntry.after)}
+        </div>
+      ) : null}
+
+      {roomChanges.added.length || roomChanges.removed.length ? (
+        <div className="mt-3 grid gap-1 rounded-md bg-muted/50 p-2 font-mono text-xs">
+          {roomChanges.added.map((room, index) => (
+            <div key={`added-${room}-${index}`} className="font-semibold text-green-700 dark:text-green-400">
+              +{room}
+            </div>
+          ))}
+
+          {roomChanges.removed.map((room, index) => (
+            <div key={`removed-${room}-${index}`} className="font-semibold text-red-700 dark:text-red-400">
+              -{room}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function GenericChangeSummary({ diff }: { diff: NonNullable<TimelineEvent["diff"]> }) {
+  return (
+    <div className="mt-2 grid gap-2">
+      {diff.map((entry) => (
+        <div key={entry.field} className="rounded-lg border border-border bg-background p-3 text-sm">
+          <p className="font-medium text-foreground">{humanFieldLabel(entry.field)}</p>
+          <p className="mt-1 text-muted-foreground">
+            {humanValue(entry.before)} →{" "}
+            <span className="text-foreground">{humanValue(entry.after)}</span>
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TimelineDetails({ event, rooms }: { event: TimelineEvent; rooms?: RoomOption[] }) {
   const metadata = eventMetadata(event);
   const bodyMarkdown = typeof metadata.bodyMarkdown === "string" ? metadata.bodyMarkdown : null;
 
@@ -98,18 +253,19 @@ function TimelineDetails({ event }: { event: TimelineEvent }) {
           {bodyMarkdown}
         </p>
       ) : null}
+
       {event.diff?.length ? (
         <details className="mt-2 rounded-lg border border-border bg-background p-2 text-xs">
           <summary className="cursor-pointer font-medium text-foreground">View changes</summary>
-          <div className="mt-2 grid gap-2">
-            {event.diff.map((entry) => (
-              <code key={entry.field} className="overflow-auto rounded bg-muted p-2 text-muted-foreground">
-                {entry.field}: {JSON.stringify({ before: entry.before, after: entry.after })}
-              </code>
-            ))}
-          </div>
+
+          {event.eventType === "booking.allocation_changed" ? (
+            <AllocationChangeSummary diff={event.diff} rooms={rooms} />
+          ) : (
+            <GenericChangeSummary diff={event.diff} />
+          )}
         </details>
       ) : null}
+
       {!bodyMarkdown && !event.diff?.length && Object.keys(metadata).length ? (
         <details className="mt-2 rounded-lg border border-border bg-background p-2 text-xs">
           <summary className="cursor-pointer font-medium text-foreground">Details</summary>
@@ -122,7 +278,7 @@ function TimelineDetails({ event }: { event: TimelineEvent }) {
   );
 }
 
-function BookingTimeline({ events }: { events?: TimelineEvent[] }) {
+function BookingTimeline({ events, rooms }: { events?: TimelineEvent[]; rooms?: RoomOption[] }) {
   return (
     <Card>
       <div className="flex items-center justify-between gap-3">
@@ -150,7 +306,7 @@ function BookingTimeline({ events }: { events?: TimelineEvent[] }) {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {event.actorName ?? "System"}{event.actorEmail ? ` · ${event.actorEmail}` : ""}
                   </p>
-                  <TimelineDetails event={event} />
+                  <TimelineDetails event={event} rooms={rooms} />
                 </div>
               </article>
             );
@@ -547,7 +703,7 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
               </form>
             ) : null}
           </Card>
-          <BookingTimeline events={timeline as TimelineEvent[] | undefined} />
+          <BookingTimeline events={timeline as TimelineEvent[] | undefined} rooms={rooms} />
         </div>
         <div className="grid content-start gap-5">
           {!publicView ? (
