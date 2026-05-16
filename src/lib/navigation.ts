@@ -94,6 +94,7 @@ export const dashboardNavigation: NavigationGroup[] = [
     items: [
       { title: "Requests", url: "/dashboard/requests", icon: ClipboardListIcon },
       { title: "Calendar", url: "/dashboard/resource-calendar", icon: CalendarDaysIcon },
+      { title: "Audit Log", url: "/dashboard/audit-logs", icon: ListChecksIcon },
     ],
   },
   {

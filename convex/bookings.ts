@@ -11,6 +11,12 @@ import {
   type ConvexAuthContext,
 } from "./authz";
 import {
+  actorFromUser,
+  compactDiff,
+  recordAuditEvent,
+  type AuditActorSnapshot,
+} from "./audit";
+import {
   evaluateBookingNoticeWindow,
   bookingBlocksFromSessionWindow,
   roomTypeBufferMinutes,
@@ -275,6 +281,25 @@ function tenantBookingNoticeRules(tenant: Doc<"tenants">) {
 
 function authCanOverrideBookingNotice(role?: string) {
   return role === "Developer" || role === "Admin" || role === "Staff";
+}
+
+function requesterActorSnapshot(args: {
+  requesterName: string;
+  requesterEmail: string;
+  requesterUserId?: Id<"users">;
+}): AuditActorSnapshot {
+  return {
+    userId: args.requesterUserId,
+    name: args.requesterName.trim(),
+    email: normalizeEmail(args.requesterEmail),
+  };
+}
+
+function statusEventType(status: Doc<"bookingRequests">["status"]) {
+  if (status === "Approved") return "booking.approved" as const;
+  if (status === "Declined") return "booking.declined" as const;
+  if (status === "Cancelled") return "booking.cancelled" as const;
+  return "booking.status_changed" as const;
 }
 
 async function verifiedBookingNoticeOverrideRole(
@@ -1229,6 +1254,54 @@ export const createRequest = mutation({
       seen: false,
       createdAt: now,
     });
+    await recordAuditEvent(ctx, {
+      eventType: "booking.created",
+      entityType: "booking",
+      entityId: requestId,
+      bookingId: requestId,
+      tenantId: tenant._id,
+      actor: requesterActorSnapshot({
+        requesterName: args.requesterName,
+        requesterEmail: normalizedRequesterEmail,
+        requesterUserId: requesterUser?._id,
+      }),
+      visibility: "requester",
+      severity: finalConflictMetadata.highestSeverity === "likely_unavailable" ? "warning" : "info",
+      message: `Booking request created: ${args.sessionName.trim()}`,
+      metadata: {
+        status: "Pending",
+        requesterName: args.requesterName.trim(),
+        requesterEmail: normalizedRequesterEmail,
+        roomSelectionMode: args.roomSelectionMode,
+        requestedRoomIds: args.requestedRoomIds?.map(String),
+        roomTypeRequests: args.roomTypeRequests.map((item) => ({
+          roomTypeId: String(item.roomTypeId),
+          quantity: item.quantity,
+        })),
+        attachmentCount: args.attachmentStorageIds.length,
+      },
+    });
+    if (finalConflictMetadata.conflicts.length > 0) {
+      await recordAuditEvent(ctx, {
+        eventType: "booking.conflict_detected",
+        entityType: "booking",
+        entityId: requestId,
+        bookingId: requestId,
+        tenantId: tenant._id,
+        actor: requesterActorSnapshot({
+          requesterName: args.requesterName,
+          requesterEmail: normalizedRequesterEmail,
+          requesterUserId: requesterUser?._id,
+        }),
+        visibility: "staff",
+        severity:
+          finalConflictMetadata.highestSeverity === "likely_unavailable"
+            ? "warning"
+            : "info",
+        message: finalConflictMetadata.summary,
+        metadata: finalConflictMetadata,
+      });
+    }
     return requestId;
   },
 });
@@ -1264,7 +1337,8 @@ export const updateStatus = mutation({
       excludeRequestId: request._id,
     });
 
-    await ctx.db.patch(args.requestId, {
+    const now = Date.now();
+    const patch = {
       status: args.status,
       assignedRoomIds,
       allocationStatus:
@@ -1276,10 +1350,61 @@ export const updateStatus = mutation({
           ? user?._id
           : request.allocationUpdatedByUserId,
       allocationUpdatedAt:
-        args.assignedRoomIds !== undefined ? Date.now() : request.allocationUpdatedAt,
+        args.assignedRoomIds !== undefined ? now : request.allocationUpdatedAt,
       conflictMetadata,
-      updatedAt: Date.now(),
+      updatedAt: now,
+    };
+
+    await ctx.db.patch(args.requestId, patch);
+    await recordAuditEvent(ctx, {
+      eventType: statusEventType(args.status),
+      entityType: "booking",
+      entityId: args.requestId,
+      bookingId: args.requestId,
+      tenantId: tenant._id,
+      actor: actorFromUser(user),
+      visibility: "requester",
+      severity: args.status === "Declined" || args.status === "Cancelled" ? "warning" : "info",
+      message: `Booking status changed from ${request.status} to ${args.status}`,
+      metadata: {
+        previousStatus: request.status,
+        status: args.status,
+        conflictSummary: conflictMetadata.summary,
+      },
+      diff: compactDiff(
+        {
+          status: request.status,
+          assignedRoomIds: request.assignedRoomIds.map(String),
+          allocationStatus: request.allocationStatus,
+        },
+        {
+          status: patch.status,
+          assignedRoomIds: patch.assignedRoomIds.map(String),
+          allocationStatus: patch.allocationStatus,
+        },
+        ["status", "assignedRoomIds", "allocationStatus"]
+      ),
     });
+    if (args.assignedRoomIds !== undefined) {
+      await recordAuditEvent(ctx, {
+        eventType: "booking.allocation_override",
+        entityType: "booking",
+        entityId: args.requestId,
+        bookingId: args.requestId,
+        tenantId: tenant._id,
+        actor: actorFromUser(user),
+        visibility: "staff",
+        message: "Room allocation overridden during status update",
+        metadata: {
+          assignedRoomIds: assignedRoomIds.map(String),
+        },
+        diff: compactDiff(
+          { assignedRoomIds: request.assignedRoomIds.map(String) },
+          { assignedRoomIds: assignedRoomIds.map(String) },
+          ["assignedRoomIds"]
+        ),
+      });
+    }
   },
 });
 
@@ -1319,6 +1444,53 @@ export const updateAllocation = mutation({
       conflictMetadata,
       updatedAt: now,
     });
+    await recordAuditEvent(ctx, {
+      eventType: "booking.allocation_changed",
+      entityType: "booking",
+      entityId: args.requestId,
+      bookingId: args.requestId,
+      tenantId: tenant._id,
+      actor: actorFromUser(user),
+      visibility: "staff",
+      severity: conflictMetadata.highestSeverity === "likely_unavailable" ? "warning" : "info",
+      message: "Room allocation changed",
+      metadata: {
+        allocationStatus: "ManuallyAdjusted",
+        allocationNotes: allocationNotes || undefined,
+        conflictSummary: conflictMetadata.summary,
+        assignedRoomIds: args.assignedRoomIds.map(String),
+      },
+      diff: compactDiff(
+        {
+          assignedRoomIds: request.assignedRoomIds.map(String),
+          allocationNotes: request.allocationNotes,
+          allocationStatus: request.allocationStatus,
+        },
+        {
+          assignedRoomIds: args.assignedRoomIds.map(String),
+          allocationNotes: allocationNotes || undefined,
+          allocationStatus: "ManuallyAdjusted",
+        },
+        ["assignedRoomIds", "allocationNotes", "allocationStatus"]
+      ),
+    });
+    if (conflictMetadata.conflicts.length > 0) {
+      await recordAuditEvent(ctx, {
+        eventType: "booking.conflict_detected",
+        entityType: "booking",
+        entityId: args.requestId,
+        bookingId: args.requestId,
+        tenantId: tenant._id,
+        actor: actorFromUser(user),
+        visibility: "staff",
+        severity:
+          conflictMetadata.highestSeverity === "likely_unavailable"
+            ? "warning"
+            : "info",
+        message: conflictMetadata.summary,
+        metadata: conflictMetadata,
+      });
+    }
   },
 });
 
@@ -1334,14 +1506,34 @@ export const addComment = mutation({
     const { tenant, user } = await requireStaff(ctx, args.tenantSlug, args.auth);
     const request = await ctx.db.get(args.requestId);
     if (!request || request.tenantId !== tenant._id) throw new Error("Request not found");
-    return await ctx.db.insert("comments", {
+    const now = Date.now();
+    const bodyMarkdown = args.bodyMarkdown.trim();
+    const commentId = await ctx.db.insert("comments", {
       tenantId: tenant._id,
       requestId: args.requestId,
       authorUserId: user?._id,
-      bodyMarkdown: args.bodyMarkdown,
+      authorName: user?.name,
+      authorEmail: user?.email,
+      bodyMarkdown,
       internal: args.internal,
-      createdAt: Date.now(),
+      createdAt: now,
     });
+    await recordAuditEvent(ctx, {
+      eventType: "booking.comment_added",
+      entityType: "comment",
+      entityId: commentId,
+      bookingId: args.requestId,
+      tenantId: tenant._id,
+      actor: actorFromUser(user),
+      visibility: args.internal ? "staff" : "requester",
+      message: args.internal ? "Internal booking comment added" : "Booking comment added",
+      metadata: {
+        commentId: String(commentId),
+        internal: args.internal,
+        bodyMarkdown,
+      },
+    });
+    return commentId;
   },
 });
 
