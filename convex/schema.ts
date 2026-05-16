@@ -132,6 +132,7 @@ export default defineSchema({
     status: v.union(
       v.literal("Pending"),
       v.literal("Approved"),
+      v.literal("Confirmed"),
       v.literal("Completed"),
       v.literal("Declined"),
       v.literal("Cancelled")
@@ -184,6 +185,7 @@ export default defineSchema({
       v.union(
         v.literal("Unallocated"),
         v.literal("AutoAllocated"),
+        v.literal("ManualReviewRequired"),
         v.literal("ManuallyAdjusted"),
         v.literal("Conflict")
       )
@@ -214,6 +216,8 @@ export default defineSchema({
               v.literal("exact_room_overlap"),
               v.literal("pending_overlap"),
               v.literal("room_type_exhausted"),
+              v.literal("inactive_room"),
+              v.literal("room_type_mismatch"),
               v.literal("blocked_period"),
               v.literal("campus_unavailable")
             ),
@@ -235,6 +239,7 @@ export default defineSchema({
               v.union(
                 v.literal("Pending"),
                 v.literal("Approved"),
+                v.literal("Confirmed"),
                 v.literal("Completed")
               )
             ),
@@ -242,6 +247,20 @@ export default defineSchema({
             blockedReason: v.optional(v.string()),
             overlapStart: v.optional(v.string()),
             overlapEnd: v.optional(v.string()),
+            requestedQuantity: v.optional(v.number()),
+            availableQuantity: v.optional(v.number()),
+            missingQuantity: v.optional(v.number()),
+            unavailableRoomIds: v.optional(v.array(v.string())),
+            unavailableRooms: v.optional(
+              v.array(
+                v.object({
+                  id: v.string(),
+                  code: v.string(),
+                  name: v.string(),
+                  reason: v.string(),
+                })
+              )
+            ),
           })
         ),
       })

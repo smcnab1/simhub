@@ -810,6 +810,11 @@ export function BookingWizard() {
                     <div>
                       <p className="font-medium">{conflict.message}</p>
                       {conflict.severity === "likely_unavailable" ? <p className="mt-1">This request may not be possible and will require admin review.</p> : null}
+                      {conflict.requestedQuantity !== undefined ? (
+                        <p className="mt-1 text-xs opacity-85">
+                          Requested {conflict.requestedQuantity}, available {conflict.availableQuantity ?? "unknown"}, missing {conflict.missingQuantity ?? "unknown"}.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </div>

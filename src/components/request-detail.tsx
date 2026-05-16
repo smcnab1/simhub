@@ -1,14 +1,17 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, LoaderCircle, Search, X } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useOptionalDashboardAuth } from "@/components/dashboard-auth";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { formFieldClass, primaryButtonClass } from "@/components/ui";
 import { formatBlockTime, formatRooms } from "@/lib/format";
 import { TENANT_SLUG } from "@/lib/config";
@@ -38,6 +41,259 @@ function severityClass(severity: string) {
   return "border-primary/30 bg-primary/10 text-primary";
 }
 
+type RoomOption = {
+  _id: Id<"rooms">;
+  code: string;
+  name: string;
+  capacity: number;
+  active: boolean;
+  roomType?: { name?: string } | null;
+  campus?: { name?: string } | null;
+};
+
+type AllocationRequest = {
+  _id: Id<"bookingRequests">;
+  status: "Pending" | "Approved" | "Confirmed" | "Completed" | "Declined" | "Cancelled";
+  assignedRoomIds?: Id<"rooms">[];
+  assignedRooms?: Array<{ _id: Id<"rooms">; code: string; name: string }>;
+  allocationStatus?: string;
+  allocationNotes?: string;
+  allocationUpdatedAt?: number;
+  allocationUpdatedBy?: {
+    name: string;
+    email: string;
+    role: string;
+  } | null;
+  updatedAt: number;
+};
+
+function formatAuditTime(value?: number) {
+  if (!value) return "Not recorded";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function ManualAllocationPanel({
+  request,
+  rooms,
+  tenantSlug,
+  auth,
+}: {
+  request: AllocationRequest;
+  rooms?: RoomOption[];
+  tenantSlug: string;
+  auth: NonNullable<ReturnType<typeof useOptionalDashboardAuth>>;
+}) {
+  const updateAllocation = useMutation(api.bookings.updateAllocation);
+  const [selectedRoomIds, setSelectedRoomIds] = useState<Id<"rooms">[]>(
+    request.assignedRoomIds ?? []
+  );
+  const [notes, setNotes] = useState(request.allocationNotes ?? "");
+  const [query, setQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const selectedRoomIdSet = useMemo(
+    () => new Set<string>(selectedRoomIds),
+    [selectedRoomIds]
+  );
+  const preview = useQuery(api.bookings.previewManualAllocation, {
+    tenantSlug,
+    auth,
+    requestId: request._id,
+    assignedRoomIds: selectedRoomIds,
+  });
+  const filteredRooms = useMemo(() => {
+    const term = query.trim().toLowerCase();
+
+    return (rooms ?? []).filter((room) => {
+      if (!term) return true;
+      return [room.name, room.code, room.roomType?.name, room.campus?.name]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+  }, [query, rooms]);
+  const selectedRooms = useMemo(
+    () =>
+      selectedRoomIds.map(
+        (roomId) =>
+          rooms?.find((room) => room._id === roomId) ??
+          request.assignedRooms?.find((room) => room._id === roomId)
+      ),
+    [request.assignedRooms, rooms, selectedRoomIds]
+  );
+  const hasChanges =
+    selectedRoomIds.join("|") !== (request.assignedRoomIds ?? []).join("|") ||
+    notes.trim() !== (request.allocationNotes ?? "");
+
+  function toggleRoom(roomId: Id<"rooms">) {
+    setSelectedRoomIds((current) =>
+      current.includes(roomId)
+        ? current.filter((id) => id !== roomId)
+        : [...current, roomId]
+    );
+  }
+
+  function reset() {
+    setSelectedRoomIds(request.assignedRoomIds ?? []);
+    setNotes(request.allocationNotes ?? "");
+    setError(null);
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+
+    try {
+      await updateAllocation({
+        tenantSlug,
+        auth,
+        requestId: request._id,
+        assignedRoomIds: selectedRoomIds,
+        allocationNotes: notes,
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to save allocation.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/40 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-foreground">Allocation management</p>
+          <p className="text-xs text-muted-foreground">
+            Last updated by {request.allocationUpdatedBy?.name ?? "unknown"} · {formatAuditTime(request.allocationUpdatedAt)}
+          </p>
+        </div>
+        <Badge variant="outline">{request.allocationStatus ?? "Unallocated"}</Badge>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {selectedRooms.map((room, index) =>
+          room ? (
+            <button
+              key={room._id}
+              type="button"
+              onClick={() => toggleRoom(room._id)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium"
+            >
+              {room.name} ({room.code}) <X className="size-3" />
+            </button>
+          ) : (
+            <Badge key={`${selectedRoomIds[index]}-${index}`} variant="outline">
+              Unknown room
+            </Badge>
+          )
+        )}
+        {selectedRooms.length === 0 ? (
+          <span className="text-sm text-muted-foreground">No rooms assigned.</span>
+        ) : null}
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        <label className="text-xs font-medium text-muted-foreground" htmlFor="room-search">
+          Search rooms
+        </label>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            id="room-search"
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            className="pl-9"
+            placeholder="Room, code, type, or campus"
+          />
+        </div>
+        <div className="grid max-h-64 gap-2 overflow-auto rounded-lg border border-border bg-background p-2">
+          {filteredRooms.map((room) => {
+            const selected = selectedRoomIdSet.has(room._id);
+
+            return (
+              <button
+                key={room._id}
+                type="button"
+                onClick={() => toggleRoom(room._id)}
+                className={`grid rounded-lg border p-2 text-left text-sm ${selected ? "border-primary bg-primary/10" : "border-border bg-card"}`}
+              >
+                <span className="font-medium text-foreground">{room.name} ({room.code})</span>
+                <span className="text-xs text-muted-foreground">
+                  {room.roomType?.name ?? "Unknown type"} · {room.campus?.name ?? "No campus"} · capacity {room.capacity}
+                  {room.active ? "" : " · inactive"}
+                </span>
+              </button>
+            );
+          })}
+          {rooms === undefined ? (
+            <p className="text-sm text-muted-foreground">Loading rooms...</p>
+          ) : null}
+          {rooms !== undefined && filteredRooms.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No rooms match that search.</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        <label className="text-xs font-medium text-muted-foreground" htmlFor="allocation-notes">
+          Allocation notes
+        </label>
+        <Textarea
+          id="allocation-notes"
+          value={notes}
+          onChange={(event) => setNotes(event.currentTarget.value)}
+          placeholder="Moved due to maintenance"
+        />
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        {preview === undefined ? (
+          <p className="rounded-lg border border-border bg-background p-2 text-sm text-muted-foreground">
+            Checking selected rooms...
+          </p>
+        ) : preview.conflicts.length ? (
+          preview.conflicts.map((conflict, index) => (
+            <div key={`${conflict.type}-${index}`} className={`rounded-lg border p-2 text-sm ${severityClass(conflict.severity)}`}>
+              <div className="flex gap-2">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <div>
+                  <p className="font-medium">{conflict.message}</p>
+                  {conflict.roomCode ? <p className="text-xs opacity-85">Room: {conflict.roomCode}</p> : null}
+                  {conflict.blockedReason ? <p className="text-xs opacity-85">Blocked: {conflict.blockedReason}</p> : null}
+                  {conflict.conflictingRequestId ? <p className="text-xs opacity-85">Conflicting request: {conflict.conflictingRequestId}</p> : null}
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="rounded-lg border border-primary/30 bg-primary/10 p-2 text-sm text-primary">
+            No conflicts detected for this manual allocation.
+          </p>
+        )}
+      </div>
+
+      {error ? (
+        <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button type="button" onClick={save} disabled={!hasChanges || saving}>
+          {saving ? <LoaderCircle className="size-4 animate-spin" /> : null}
+          Save allocation
+        </Button>
+        <Button type="button" variant="outline" onClick={reset} disabled={!hasChanges || saving}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function RequestDetail({ id, publicView = false }: { id: string; publicView?: boolean }) {
   const auth = useOptionalDashboardAuth();
   const searchParams = useSearchParams();
@@ -53,6 +309,10 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
   const request = useQuery(
     publicView ? api.bookings.getPublicRequestByReference : api.bookings.getRequest,
     publicView ? publicLookupArgs : { tenantSlug, auth: auth ?? {}, requestId: id as Id<"bookingRequests"> }
+  );
+  const rooms = useQuery(
+    api.tenants.listPrivateRooms,
+    publicView || !auth ? "skip" : { tenantSlug, auth, activeOnly: false }
   );
   const updateStatus = useMutation(api.bookings.updateStatus);
   const addComment = useMutation(api.bookings.addComment);
@@ -104,6 +364,7 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
               <div><dt className="text-sm text-muted-foreground">Attendees</dt><dd className="font-medium">{request.attendeeCount}</dd></div>
               <div><dt className="text-sm text-muted-foreground">Rooms</dt><dd className="font-medium">{formatRooms(request)}</dd></div>
               <div><dt className="text-sm text-muted-foreground">Room request mode</dt><dd className="font-medium">{request.roomSelectionMode === "SpecificRooms" ? "Specific rooms" : "Room type quantity"}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Allocation</dt><dd className="font-medium">{request.allocationStatus ?? "Unallocated"}</dd></div>
               <div><dt className="text-sm text-muted-foreground">Email</dt><dd className="font-medium">{request.requesterEmail}</dd></div>
               <div><dt className="text-sm text-muted-foreground">Phone</dt><dd className="font-medium">{request.requesterPhone || "Not provided"}</dd></div>
               <div><dt className="text-sm text-muted-foreground">CC</dt><dd className="font-medium">{request.ccEmails.length ? request.ccEmails.join(", ") : "None"}</dd></div>
@@ -132,6 +393,15 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
                     ))}
                   </div>
                 </div>
+              ) : null}
+              {!publicView && auth ? (
+                <ManualAllocationPanel
+                  key={`${request._id}-${request.updatedAt}`}
+                  request={request}
+                  rooms={rooms}
+                  tenantSlug={tenantSlug}
+                  auth={auth}
+                />
               ) : null}
             </div>
             <p className="mt-4 rounded-xl bg-card/80 p-3 text-sm text-foreground">{request.details}</p>
@@ -234,6 +504,14 @@ export function RequestDetail({ id, publicView = false }: { id: string; publicVi
                           {conflict.campusName ? <div>Campus: {conflict.campusName}</div> : null}
                           {conflict.blockedReason ? <div>Blocked reason: {conflict.blockedReason}</div> : null}
                           {conflict.conflictingRequestId ? <div>Conflicting request: {conflict.conflictingRequestId}</div> : null}
+                          {conflict.requestedQuantity !== undefined ? <div>Requested quantity: {conflict.requestedQuantity}</div> : null}
+                          {conflict.availableQuantity !== undefined ? <div>Available quantity: {conflict.availableQuantity}</div> : null}
+                          {conflict.missingQuantity !== undefined ? <div>Missing quantity: {conflict.missingQuantity}</div> : null}
+                          {conflict.unavailableRooms?.length ? (
+                            <div>
+                              Unavailable rooms: {conflict.unavailableRooms.map((room) => `${room.code} (${room.reason})`).join(", ")}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
