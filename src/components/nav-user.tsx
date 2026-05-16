@@ -20,7 +20,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { Badge } from "@/components/ui/badge"
 import { ChevronsUpDownIcon, LogOutIcon } from "lucide-react"
+
+const visibleVersionTypes = new Set(["alpha", "beta", "dev", "test"])
 
 export function NavUser({
   user,
@@ -32,6 +35,12 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
+  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION
+  const versionType = process.env.NEXT_PUBLIC_VERSION_TYPE?.toLowerCase()
+  const showVersion = Boolean(
+    appVersion && versionType && visibleVersionTypes.has(versionType)
+  )
+
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -75,6 +84,17 @@ export function NavUser({
               <LogOutIcon />
               Sign out
             </DropdownMenuItem>
+            {showVersion ? (
+              <>
+                <DropdownMenuSeparator />
+                <div className="flex items-center justify-between gap-3 px-2 py-1.5 text-xs text-muted-foreground">
+                  <span className="font-mono">v{appVersion}</span>
+                  <Badge variant="outline" className="uppercase">
+                    {versionType}
+                  </Badge>
+                </div>
+              </>
+            ) : null}
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>

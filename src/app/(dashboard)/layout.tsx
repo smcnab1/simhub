@@ -20,8 +20,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
     return (
       <main className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <NotAllowed
-          title="Dashboard access required"
-          message="Your account is signed in, but it does not have access to this dashboard workspace. Ask an admin to update your role, or switch workspaces from account access."
+          title={
+            access.reason === "no_membership"
+              ? "Workspace access pending"
+              : "Dashboard access required"
+          }
+          message={
+            access.reason === "no_membership"
+              ? "You are signed in, but this account is not assigned to a SimHQ tenant yet. Ask an admin to add your email to the correct workspace, then sign in again."
+              : "Your account is signed in, but it does not have access to this dashboard workspace. Ask an admin to update your role, or switch workspaces from account access."
+          }
         />
       </main>
     );
