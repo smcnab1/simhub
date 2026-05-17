@@ -60,7 +60,7 @@ export function AppSidebar({
     role: auth.role,
     platformRole: auth.platformRole,
     environment,
-  })
+  }).filter((group) => !group.platformOnly)
   const notificationUnseenCount = useQuery(
     api.notifications.unseenCountByTenantSlug,
     { tenantSlug: auth.tenantSlug, auth }

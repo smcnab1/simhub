@@ -175,24 +175,45 @@ export async function getDashboardAccess({
     redirect("/auth/sign-in");
   }
 
-  const workosUser = session.user as { id?: string; email?: string };
-  const workosProfile = session.user as {
+  const workosUser = session.user as {
+    id?: string;
+    email?: string;
     firstName?: string | null;
     lastName?: string | null;
     first_name?: string | null;
     last_name?: string | null;
-    name?: string | null;
     metadata?: Record<string, unknown>;
   };
-  const firstName = normalizeString(workosProfile.firstName ?? workosProfile.first_name);
-  const lastName = normalizeString(workosProfile.lastName ?? workosProfile.last_name);
+  let currentUser = workosUser;
+  let platformRole = roleFromWorkOS({
+    user: session.user,
+    role: session.role,
+    roles: session.roles,
+  });
+
+  if (!canAccessDeveloper(platformRole)) {
+    const refreshedUser = await fetchCurrentWorkOSUser(workosUser.id);
+    if (refreshedUser) {
+      currentUser = refreshedUser as typeof workosUser;
+      platformRole = roleFromWorkOS({
+        user: refreshedUser,
+        metadata: refreshedUser.metadata,
+        role: session.role,
+        roles: session.roles,
+      });
+    }
+  }
+
+  const firstName = currentUser.firstName ?? currentUser.first_name ?? undefined;
+  const lastName = currentUser.lastName ?? currentUser.last_name ?? undefined;
+
   const authIdentity = {
     user: {
       id: workosUser.id,
       email: workosUser.email,
       ...(firstName ? { firstName } : {}),
       ...(lastName ? { lastName } : {}),
-      metadata: workosProfile.metadata,
+      metadata: currentUser.metadata,
     },
     workosUserId: workosUser.id,
     email: workosUser.email,
