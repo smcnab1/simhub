@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import { NavMain } from "@/components/nav-main"
+import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import type { DashboardAuth } from "@/components/dashboard-auth"
 import { getDashboardNavigation } from "@/lib/navigation"
@@ -28,6 +29,7 @@ import { switchTenant } from "@/lib/tenant-actions"
 import { displayNameFromUser } from "@/lib/user-display"
 import {
   ChevronsUpDownIcon,
+  Code2Icon,
   ShieldCheckIcon,
 } from "lucide-react"
 
@@ -61,6 +63,7 @@ export function AppSidebar({
     platformRole: auth.platformRole,
     environment,
   }).filter((group) => !group.platformOnly)
+  const canUseDeveloperTools = auth.platformRole === "Developer"
   const notificationUnseenCount = useQuery(
     api.notifications.unseenCountByTenantSlug,
     { tenantSlug: auth.tenantSlug, auth }
@@ -150,6 +153,18 @@ export function AppSidebar({
           notificationUnseenCount={notificationUnseenCount ?? 0}
           selectedTenantSlug={auth.tenantSlug}
         />
+        {canUseDeveloperTools ? (
+          <NavSecondary
+            items={[
+              {
+                title: "Developer tools",
+                url: "/dev",
+                icon: <Code2Icon />,
+              },
+            ]}
+            className="mt-auto border-t border-sidebar-border pt-2"
+          />
+        ) : null}
       </SidebarContent>
       <SidebarFooter>
         <NavUser
