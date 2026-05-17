@@ -101,6 +101,44 @@ export const getByCustomDomain = query({
   handler: async (ctx, args) => tenantByCustomDomain(ctx, args.customDomain),
 });
 
+export const getPublicTenantBySlug = query({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug.trim().toLowerCase()))
+      .unique();
+
+    return tenant
+      ? {
+          slug: tenant.slug,
+          name: tenant.name,
+          active: tenant.active ?? true,
+        }
+      : null;
+  },
+});
+
+export const getPublicTenantByCustomDomain = query({
+  args: { customDomain: v.string() },
+  handler: async (ctx, args) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_custom_domain", (q) =>
+        q.eq("customDomain", args.customDomain.trim().toLowerCase())
+      )
+      .unique();
+
+    return tenant
+      ? {
+          slug: tenant.slug,
+          name: tenant.name,
+          active: tenant.active ?? true,
+        }
+      : null;
+  },
+});
+
 export const listMembershipsForAuth = query({
   args: { auth: authContextValidator },
   handler: async (ctx, args) => {

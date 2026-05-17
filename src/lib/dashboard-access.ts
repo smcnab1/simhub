@@ -24,11 +24,11 @@ export type DashboardAccess =
         tenantName?: string;
         role: Role;
         memberships: Array<{
-        tenantName: string;
-        tenantSlug: string;
-        role: Role;
-        customDomain?: string;
-      }>;
+          tenantName: string;
+          tenantSlug: string;
+          role: Role;
+          customDomain?: string;
+        }>;
         workosUserId?: string;
         email?: string;
         workosOrganizationId?: string;
@@ -53,6 +53,10 @@ function hasRequiredRole(role: Role, requiredRole: "tenant" | "staff" | "admin" 
 }
 
 async function listMembershipsForAuth(auth: {
+  user?: {
+    id?: string;
+    email?: string;
+  };
   workosUserId?: string;
   email?: string;
   workosOrganizationId?: string;
@@ -76,6 +80,10 @@ export async function getDashboardAccess({
 
   const workosUser = session.user as { id?: string; email?: string };
   const authIdentity = {
+    user: {
+      id: workosUser.id,
+      email: workosUser.email,
+    },
     workosUserId: workosUser.id,
     email: workosUser.email,
     workosOrganizationId: session.organizationId,
@@ -83,20 +91,24 @@ export async function getDashboardAccess({
   const memberships = await listMembershipsForAuth(authIdentity);
   const cookieStore = await cookies();
   const hostTenant = await getTenantHostResolution();
-  const selectedSlug =
-    (hostTenant.kind === "slug" ? hostTenant.tenantSlug : null) ||
-    (hostTenant.kind === "custom"
+  const hostTenantSlug =
+    hostTenant.kind === "slug"
+      ? hostTenant.tenantSlug
+      : hostTenant.kind === "custom"
       ? memberships.find(
           (membership) => membership.customDomain === hostTenant.customHost
         )?.tenantSlug
-      : null) ||
+      : null;
+  const selectedSlug =
+    hostTenantSlug ||
     cookieStore.get(TENANT_COOKIE_NAME)?.value ||
     cookieStore.get(LEGACY_TENANT_COOKIE_NAME)?.value ||
     TENANT_SLUG;
-  const selectedMembership =
-    memberships.find((membership) => membership.tenantSlug === selectedSlug) ??
-    memberships.find((membership) => canAccessStaff(membership.role)) ??
-    memberships[0];
+  const selectedMembership = hostTenantSlug
+    ? memberships.find((membership) => membership.tenantSlug === hostTenantSlug)
+    : memberships.find((membership) => membership.tenantSlug === selectedSlug) ??
+      memberships.find((membership) => canAccessStaff(membership.role)) ??
+      memberships[0];
 
   if (!selectedMembership) {
     return {
@@ -126,6 +138,7 @@ export async function getDashboardAccess({
         tenantName: membership.tenantName,
         tenantSlug: membership.tenantSlug,
         role: membership.role,
+        customDomain: membership.customDomain,
       })),
     },
   };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ConvexError } from "convex/values";
 import {
+  membershipsForAuth,
   requireAdmin,
   requireStaff,
   requireTenantAccess,
@@ -296,5 +297,59 @@ describe("Convex tenant authz helpers", () => {
       tenant: otherTenant,
       user: { _id: "user_dev", role: "Developer" },
     });
+  });
+
+  it("loads memberships from a WorkOS-style nested user auth object", async () => {
+    const ctx = createCtx({
+      identity: { subject: "user_123", email: "staff@example.com" },
+      tenants: [tenant],
+      users: [
+        {
+          _id: "user_1",
+          tenantId: tenant._id,
+          workosUserId: "user_123",
+          email: "staff@example.com",
+          role: "Staff",
+        },
+      ],
+    });
+
+    await expect(
+      membershipsForAuth(ctx as never, {
+        user: { id: "user_123", email: "staff@example.com" },
+      })
+    ).resolves.toMatchObject([
+      {
+        tenant,
+        user: { _id: "user_1", role: "Staff" },
+      },
+    ]);
+  });
+
+  it("supports a memberships array supplied by auth context", async () => {
+    const ctx = createCtx({
+      identity: { subject: "user_123", email: "staff@example.com" },
+      tenants: [tenant],
+      users: [],
+    });
+
+    await expect(
+      membershipsForAuth(ctx as never, {
+        user: { id: "user_123", email: "staff@example.com" },
+        memberships: [
+          {
+            tenantName: "Demo",
+            tenantSlug: "demo",
+            role: "Admin",
+            customDomain: "demo.example.com",
+          },
+        ],
+      })
+    ).resolves.toMatchObject([
+      {
+        tenant,
+        user: { role: "Admin" },
+      },
+    ]);
   });
 });
