@@ -51,6 +51,7 @@ export function AppSidebar({
         ]
   const navGroups = getDashboardNavigation({
     role: auth.role,
+    platformRole: auth.platformRole,
     environment,
   })
   const notificationUnseenCount = useQuery(
@@ -124,6 +125,7 @@ export function AppSidebar({
         <NavMain
           groups={navGroups}
           notificationUnseenCount={notificationUnseenCount ?? 0}
+          selectedTenantSlug={auth.tenantSlug}
         />
         <NavSecondary
           items={[

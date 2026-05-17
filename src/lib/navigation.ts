@@ -36,16 +36,19 @@ export type NavigationItem = {
   items?: NavigationItem[];
   featureFlag?: string;
   environments?: NavEnvironment[];
+  platformOnly?: boolean;
 };
 
 export type NavigationGroup = {
   title: string;
   items: NavigationItem[];
   roles?: Role[];
+  platformOnly?: boolean;
 };
 
 type NavigationContext = {
   role?: Role;
+  platformRole?: Role;
   featureFlags?: Record<string, boolean>;
   environment?: string;
 };
@@ -60,19 +63,20 @@ const adminItems: NavigationItem[] = [
 ];
 
 const developerItems: NavigationItem[] = [
-  { title: "Developer Dashboard", url: "/dashboard/developer", icon: GaugeIcon },
-  { title: "Tenant Management", url: "/dashboard/developer/tenants", icon: ShieldCheckIcon },
-  { title: "Seed/Bootstrap Tools", url: "/dashboard/developer/bootstrap", icon: SparklesIcon },
-  { title: "System Settings", url: "/dashboard/developer/system-settings", icon: SlidersHorizontalIcon },
-  { title: "Feature Flags", url: "/dashboard/developer/feature-flags", icon: FlagIcon },
-  { title: "User Impersonation/Login-As", url: "/dashboard/developer/impersonation", icon: UserCogIcon },
-  { title: "Audit Logs", url: "/dashboard/developer/audit-logs", icon: ListChecksIcon },
-  { title: "Queue/Jobs Monitor", url: "/dashboard/developer/jobs", icon: ActivityIcon },
-  { title: "Convex Debug Tools", url: "/dashboard/developer/convex-debug", icon: DatabaseZapIcon },
-  { title: "Environment Info", url: "/dashboard/developer/environment", icon: InfoIcon },
-  { title: "System Health", url: "/dashboard/developer/health", icon: HeartPulseIcon },
-  { title: "Dev Utilities", url: "/dashboard/developer/utilities", icon: TerminalIcon },
-  { title: "API/Test Tools", url: "/dashboard/developer/api-tools", icon: TestTube2Icon },
+  { title: "Developer Dashboard", url: "/dev", icon: GaugeIcon },
+  { title: "Tenant Management", url: "/dev/tenants", icon: ShieldCheckIcon },
+  { title: "Platform Users", url: "/dev/users", icon: UsersIcon },
+  { title: "Seed/Bootstrap Tools", url: "/dev/bootstrap", icon: SparklesIcon },
+  { title: "System Settings", url: "/dev/system-settings", icon: SlidersHorizontalIcon },
+  { title: "Feature Flags", url: "/dev/feature-flags", icon: FlagIcon },
+  { title: "User Impersonation/Login-As", url: "/dev/impersonation", icon: UserCogIcon },
+  { title: "Audit Logs", url: "/dev/audit-logs", icon: ListChecksIcon },
+  { title: "Queue/Jobs Monitor", url: "/dev/jobs", icon: ActivityIcon },
+  { title: "Convex Debug Tools", url: "/dev/convex-debug", icon: DatabaseZapIcon },
+  { title: "Environment Info", url: "/dev/environment", icon: InfoIcon },
+  { title: "System Health", url: "/dev/health", icon: HeartPulseIcon },
+  { title: "Dev Utilities", url: "/dev/utilities", icon: TerminalIcon },
+  { title: "API/Test Tools", url: "/dev/api-tools", icon: TestTube2Icon },
 ];
 
 /**
@@ -112,13 +116,13 @@ export const dashboardNavigation: NavigationGroup[] = [
   },
   {
     title: "Developer",
-    roles: ["Developer"],
+    platformOnly: true,
     items: [
       {
         title: "Developer Tools",
-        url: "/dashboard/developer",
+        url: "/dev",
         icon: Code2Icon,
-        roles: ["Developer"],
+        platformOnly: true,
         items: developerItems,
       },
     ],
@@ -142,6 +146,10 @@ function canRoleSeeItem(role: Role | undefined, itemRoles?: Role[]) {
 }
 
 function isVisibleInContext(item: NavigationItem, context: NavigationContext) {
+  if (item.platformOnly && !canAccessDeveloper(context.platformRole ?? "Requester")) {
+    return false;
+  }
+
   if (!canRoleSeeItem(context.role, item.roles)) return false;
 
   if (item.featureFlag && !context.featureFlags?.[item.featureFlag]) {
@@ -173,7 +181,13 @@ function filterItem(
 
 export function getDashboardNavigation(context: NavigationContext) {
   return dashboardNavigation
-    .filter((group) => canRoleSeeItem(context.role, group.roles))
+    .filter((group) => {
+      if (group.platformOnly && !canAccessDeveloper(context.platformRole ?? "Requester")) {
+        return false;
+      }
+
+      return canRoleSeeItem(context.role, group.roles);
+    })
     .map((group) => ({
       ...group,
       items: group.items

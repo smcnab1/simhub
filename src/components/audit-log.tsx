@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { auditEventLabel, auditEventTypes } from "@/lib/audit-types";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 function formatEventTime(value: number) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -78,6 +79,7 @@ function DiffList({ event }: { event: AuditEvent }) {
 
 export function AuditLog() {
   const auth = useOptionalDashboardAuth();
+  const linkFor = useTenantLink(auth?.tenantSlug);
   const [search, setSearch] = useState("");
   const [actor, setActor] = useState("");
   const [bookingId, setBookingId] = useState("");
@@ -200,7 +202,7 @@ export function AuditLog() {
                     <Badge variant="outline">{auditEventLabel(event.eventType)}</Badge>
                     <Badge variant="outline">{event.visibility}</Badge>
                     {event.bookingId ? (
-                      <Link className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" href={`/dashboard/requests/${event.bookingId}`}>
+                      <Link className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline" href={linkFor(`/dashboard/requests/${event.bookingId}`)}>
                         <ClipboardList className="size-3.5" />
                         Booking
                       </Link>

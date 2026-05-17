@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { CalendarDays, ChevronRight } from "lucide-react";
 import clsx from "clsx";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { TenantAwareTopbarLinks } from "@/components/tenant-aware-topbar-links";
 import { APP_NAME } from "@/lib/config";
 
 export const pageWrapClass = "mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8";
@@ -19,25 +20,31 @@ export function PageShell({ children }: { children: ReactNode }) {
   return <main className={pageWrapClass}>{children}</main>;
 }
 
-export function PublicNav({ tenantName }: { tenantName?: string }) {
+export function PublicNav({
+  tenantName,
+  linkFor = (path: string) => path,
+}: {
+  tenantName?: string;
+  linkFor?: (path: string) => string;
+}) {
   const displayName = tenantName ?? APP_NAME;
   const hasTenant = Boolean(tenantName);
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/80 bg-card/90 backdrop-blur-xl">
       <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-tight">
+        <Link href={linkFor("/")} className="flex items-center gap-2 text-lg font-bold tracking-tight">
           <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">S</span>
           {displayName}
         </Link>
         <div className="flex items-center gap-2 text-sm">
           {hasTenant ? (
             <>
-              <Link href="/calendar" className="rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary">Calendar</Link>
-              <Link href="/book" className="rounded-lg bg-primary px-3 py-2 font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">Book a Room</Link>
+              <Link href={linkFor("/calendar")} className="rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary">Calendar</Link>
+              <Link href={linkFor("/book")} className="rounded-lg bg-primary px-3 py-2 font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">Book a Room</Link>
             </>
           ) : null}
-          <a href="/auth/sign-in?returnTo=/dashboard" className="hidden rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary sm:inline-flex">Staff sign in</a>
+          <a href={`/auth/sign-in?returnTo=${encodeURIComponent(linkFor("/dashboard"))}`} className="hidden rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary sm:inline-flex">Staff sign in</a>
           <ThemeToggle />
         </div>
       </nav>
@@ -45,7 +52,13 @@ export function PublicNav({ tenantName }: { tenantName?: string }) {
   );
 }
 
-export function DashboardTopbar({ title = "Operations" }: { title?: string }) {
+export function DashboardTopbar({
+  title = "Operations",
+  selectedTenantSlug,
+}: {
+  title?: string;
+  selectedTenantSlug?: string;
+}) {
   return (
     <header className="sticky top-0 z-20 flex min-h-16 items-center justify-between border-b border-border/80 bg-card/90 px-4 py-3 backdrop-blur-xl lg:px-6">
       <div>
@@ -53,8 +66,7 @@ export function DashboardTopbar({ title = "Operations" }: { title?: string }) {
         <p className="text-sm font-semibold text-foreground">{title}</p>
       </div>
       <div className="flex items-center gap-2">
-        <Link href="/calendar" className="hidden rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted sm:inline-flex">Public calendar</Link>
-        <Link href="/book" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">New request</Link>
+        <TenantAwareTopbarLinks selectedTenantSlug={selectedTenantSlug} />
         <ThemeToggle />
       </div>
     </header>
@@ -117,9 +129,9 @@ export function StatusPill({ status }: { status: string }) {
   return <span className={clsx("rounded-full border border-border px-2.5 py-1 text-xs font-medium", tone)}>{status}</span>;
 }
 
-export function RequestCard({ request }: { request: { id: string; sessionName: string; requesterName: string; date: string; rooms: string[]; status: string } }) {
+export function RequestCard({ request }: { request: { id: string; sessionName: string; requesterName: string; date: string; rooms: string[]; status: string; href?: string } }) {
   return (
-    <Link href={`/dashboard/requests/${request.id}`} className="block rounded-2xl border border-border bg-card/90 p-4 shadow-sm transition hover:border-ring hover:bg-muted/40 hover:shadow-md focus-visible:ring-3 focus-visible:ring-ring/50">
+    <Link href={request.href ?? `/dashboard/requests/${request.id}`} className="block rounded-2xl border border-border bg-card/90 p-4 shadow-sm transition hover:border-ring hover:bg-muted/40 hover:shadow-md focus-visible:ring-3 focus-visible:ring-ring/50">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">{request.date} · {request.requesterName}</p>

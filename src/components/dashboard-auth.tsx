@@ -11,6 +11,7 @@ export type DashboardAuth = {
     tenantSlug: string;
     role: "Developer" | "Admin" | "Staff" | "Requester";
   }>;
+  platformRole?: "Developer";
   workosUserId?: string;
   email?: string;
   workosOrganizationId?: string;

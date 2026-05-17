@@ -2,6 +2,7 @@ import { HomeLanding } from "@/components/home-landing";
 import { PublicNav, PageShell } from "@/components/ui";
 import { TenantNotFound } from "@/components/tenant-not-found";
 import { resolveTenantForRequest } from "@/lib/server-tenant";
+import { getTenantAwareLinkFor } from "@/lib/server-tenant-url";
 import { APP_NAME } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,10 @@ export default async function Home({ searchParams }: HomeProps) {
   const tenant = await resolveTenantForRequest(
     tenantParam ? new URLSearchParams({ tenant: tenantParam }) : undefined,
   );
+  const linkFor = await getTenantAwareLinkFor({
+    tenantFromQuery: tenantParam,
+    selectedTenantSlug: tenant.ok ? tenant.tenant.slug : undefined,
+  });
 
   if (!tenant.ok && tenant.reason === "not_found") {
     return (
@@ -28,7 +33,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
   return (
     <>
-      <PublicNav tenantName={tenant.ok ? tenant.tenant.name : undefined} />
+      <PublicNav tenantName={tenant.ok ? tenant.tenant.name : undefined} linkFor={linkFor} />
       <PageShell>
         {tenant.ok ? (
           <HomeLanding tenantSlug={tenant.tenant.slug} />
@@ -43,7 +48,7 @@ export default async function Home({ searchParams }: HomeProps) {
             </p>
             <div className="mt-6">
               <a
-                href="/auth/sign-in?returnTo=/dashboard"
+                href={`/auth/sign-in?returnTo=${encodeURIComponent(linkFor("/dashboard"))}`}
                 className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
               >
                 Staff sign in

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import { formatRequestDate, formatRooms } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -249,7 +250,13 @@ function EmptyState({ statusFilter }: { statusFilter: BookingStatus }) {
   );
 }
 
-function RequestRow({ request }: { request: TriageRequest }) {
+function RequestRow({
+  request,
+  linkFor,
+}: {
+  request: TriageRequest;
+  linkFor: (path: string) => string;
+}) {
   const conflict = hasRealConflicts(request);
   const unalloc = isUnallocated(request);
   const attention = needsAttention(request);
@@ -304,7 +311,7 @@ function RequestRow({ request }: { request: TriageRequest }) {
       {/* Link */}
       <TableCell>
         <Link
-          href={`/dashboard/requests/${request._id}`}
+          href={linkFor(`/dashboard/requests/${request._id}`)}
           className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/50"
           aria-label={`View request: ${request.sessionName}`}
         >
@@ -316,7 +323,13 @@ function RequestRow({ request }: { request: TriageRequest }) {
   );
 }
 
-function RequestMobileCard({ request }: { request: TriageRequest }) {
+function RequestMobileCard({
+  request,
+  linkFor,
+}: {
+  request: TriageRequest;
+  linkFor: (path: string) => string;
+}) {
   const conflict = hasRealConflicts(request);
   const unalloc = isUnallocated(request);
   const attention = needsAttention(request);
@@ -325,7 +338,7 @@ function RequestMobileCard({ request }: { request: TriageRequest }) {
 
   return (
     <Link
-      href={`/dashboard/requests/${request._id}`}
+      href={linkFor(`/dashboard/requests/${request._id}`)}
       className="block rounded-2xl border border-border bg-card p-4 shadow-sm transition hover:border-ring hover:bg-muted/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/50"
       aria-label={`Booking request: ${request.sessionName}`}
     >
@@ -367,10 +380,12 @@ function RequestsTable({
   requests,
   isLoading,
   statusFilter,
+  linkFor,
 }: {
   requests: TriageRequest[] | null;
   isLoading: boolean;
   statusFilter: BookingStatus;
+  linkFor: (path: string) => string;
 }) {
   return (
     <div className={cn(tableContainerClass, "hidden md:block")}>
@@ -392,7 +407,7 @@ function RequestsTable({
           {isLoading ? (
             <SkeletonRows />
           ) : requests && requests.length > 0 ? (
-            requests.map((r) => <RequestRow key={r._id} request={r} />)
+            requests.map((r) => <RequestRow key={r._id} request={r} linkFor={linkFor} />)
           ) : (
             <TableRow>
               <TableCell colSpan={7} className="px-4 py-0">
@@ -410,17 +425,19 @@ function RequestsMobileList({
   requests,
   isLoading,
   statusFilter,
+  linkFor,
 }: {
   requests: TriageRequest[] | null;
   isLoading: boolean;
   statusFilter: BookingStatus;
+  linkFor: (path: string) => string;
 }) {
   return (
     <div className="grid gap-3 md:hidden">
       {isLoading ? (
         <SkeletonCards />
       ) : requests && requests.length > 0 ? (
-        requests.map((r) => <RequestMobileCard key={r._id} request={r} />)
+        requests.map((r) => <RequestMobileCard key={r._id} request={r} linkFor={linkFor} />)
       ) : (
         <EmptyState statusFilter={statusFilter} />
       )}
@@ -434,6 +451,7 @@ function RequestsMobileList({
 
 export function RequestsTriageList() {
   const auth = useDashboardAuth();
+  const linkFor = useTenantLink(auth.tenantSlug);
   const [activeTab, setActiveTab] = useState<BookingStatus>("All");
   const [search, setSearch] = useState("");
 
@@ -496,7 +514,7 @@ export function RequestsTriageList() {
         title="Booking Requests"
         action={
           <Link
-            href="/book"
+            href={linkFor("/book")}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring/50"
           >
             <CalendarDays className="size-4" aria-hidden="true" />
@@ -608,11 +626,13 @@ export function RequestsTriageList() {
               requests={filteredRequests}
               isLoading={isLoading}
               statusFilter={activeTab}
+              linkFor={linkFor}
             />
             <RequestsMobileList
               requests={filteredRequests}
               isLoading={isLoading}
               statusFilter={activeTab}
+              linkFor={linkFor}
             />
           </TabsContent>
         ))}

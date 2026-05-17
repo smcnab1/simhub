@@ -21,6 +21,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import type { NavigationGroup, NavigationItem } from "@/lib/navigation"
+import { useTenantLink } from "@/lib/use-tenant-link"
 import { ChevronRightIcon } from "lucide-react"
 
 function isItemActive(item: NavigationItem, pathname: string): boolean {
@@ -33,10 +34,12 @@ function NavItem({
   item,
   pathname,
   notificationUnseenCount,
+  linkFor,
 }: {
   item: NavigationItem;
   pathname: string;
   notificationUnseenCount?: number;
+  linkFor: (path: string) => string;
 }) {
   const Icon = item.icon
   const isActive = isItemActive(item, pathname)
@@ -52,7 +55,7 @@ function NavItem({
       <SidebarMenuButton
         tooltip={item.title}
         isActive={isActive}
-        render={<Link href={item.url} />}
+        render={<Link href={linkFor(item.url)} />}
       >
         {Icon ? <Icon /> : null}
         <span>{item.title}</span>
@@ -78,7 +81,7 @@ function NavItem({
                 <SidebarMenuSubItem key={subItem.title}>
                   <SidebarMenuSubButton
                     isActive={isItemActive(subItem, pathname)}
-                    render={<Link href={subItem.url} />}
+                    render={<Link href={linkFor(subItem.url)} />}
                   >
                     <span>{subItem.title}</span>
                   </SidebarMenuSubButton>
@@ -95,11 +98,14 @@ function NavItem({
 export function NavMain({
   groups,
   notificationUnseenCount,
+  selectedTenantSlug,
 }: {
   groups: NavigationGroup[]
   notificationUnseenCount?: number
+  selectedTenantSlug?: string
 }) {
   const pathname = usePathname()
+  const linkFor = useTenantLink(selectedTenantSlug)
 
   return (
     <>
@@ -113,6 +119,7 @@ export function NavMain({
                 item={item}
                 pathname={pathname}
                 notificationUnseenCount={notificationUnseenCount}
+                linkFor={linkFor}
               />
             ))}
           </SidebarMenu>

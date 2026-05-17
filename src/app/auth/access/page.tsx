@@ -4,6 +4,7 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "../../../../convex/_generated/api";
 import { getCurrentUser } from "@/lib/auth";
 import { APP_NAME, TENANT_COOKIE_NAME } from "@/lib/config";
+import { getTenantAwareLinkFor } from "@/lib/server-tenant-url";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,10 @@ async function selectTenant(formData: FormData) {
     // should persist across tenant subdomains.
     maxAge: 60 * 60 * 24 * 400,
   });
-  redirect("/dashboard");
+  const linkFor = await getTenantAwareLinkFor({
+    selectedTenantSlug: membership.tenantSlug,
+  });
+  redirect(linkFor("/dashboard"));
 }
 
 export default async function AccessPage() {

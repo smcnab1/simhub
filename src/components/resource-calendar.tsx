@@ -18,6 +18,7 @@ import {
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useDashboardAuth } from "@/components/dashboard-auth";
+import { useTenantLink } from "@/lib/use-tenant-link";
 import { Card, SectionHeader, StatusPill } from "@/components/ui";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -432,11 +433,13 @@ function RoomRow({
   bookings,
   blockedTimes,
   hourCount,
+  linkFor,
 }: {
   room: CalendarRoom;
   bookings: CalendarRequest[];
   blockedTimes: CalendarBlockedTime[];
   hourCount: number;
+  linkFor: (path: string) => string;
 }) {
   const relevantBlocks = blockedTimes.filter((bt) =>
     blockedTimeAffectsRoom(bt, room)
@@ -518,7 +521,7 @@ function RoomRow({
           return (
             <a
               key={booking._id}
-              href={`/dashboard/requests/${booking._id}`}
+              href={linkFor(`/dashboard/requests/${booking._id}`)}
               className={`absolute z-10 overflow-hidden rounded-md border text-xs shadow-sm transition-opacity hover:opacity-90 ${bookingChipClass(
                 booking.status
               )}`}
@@ -568,7 +571,13 @@ function RoomRow({
   );
 }
 
-function UnallocatedPanel({ bookings }: { bookings: CalendarRequest[] }) {
+function UnallocatedPanel({
+  bookings,
+  linkFor,
+}: {
+  bookings: CalendarRequest[];
+  linkFor: (path: string) => string;
+}) {
   if (bookings.length === 0) return null;
 
   return (
@@ -583,7 +592,7 @@ function UnallocatedPanel({ bookings }: { bookings: CalendarRequest[] }) {
         {bookings.map((b) => (
           <a
             key={b._id}
-            href={`/dashboard/requests/${b._id}`}
+            href={linkFor(`/dashboard/requests/${b._id}`)}
             className="inline-flex flex-col rounded-lg border border-border bg-card px-3 py-1.5 text-xs shadow-sm hover:border-ring"
           >
             <span className="font-semibold text-foreground">
@@ -604,11 +613,13 @@ function MobileAgenda({
   rooms,
   blockedTimes,
   tenantTimezone,
+  linkFor,
 }: {
   bookings: CalendarRequest[];
   rooms: CalendarRoom[];
   blockedTimes: CalendarBlockedTime[];
   tenantTimezone: string;
+  linkFor: (path: string) => string;
 }) {
   const roomMap = new Map(rooms.map((room) => [room._id, room]));
   const bookingsById = new Map(bookings.map((booking) => [booking._id, booking]));
@@ -663,7 +674,7 @@ function MobileAgenda({
           return (
             <a
               key={item.id}
-              href={`/dashboard/requests/${booking._id}`}
+              href={linkFor(`/dashboard/requests/${booking._id}`)}
               className="rounded-xl border border-border bg-card p-3 text-sm shadow-sm transition hover:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -710,6 +721,7 @@ export function ResourceCalendar() {
 
   const auth = useDashboardAuth();
   const tenantSlug = auth.tenantSlug;
+  const linkFor = useTenantLink(tenantSlug);
 
   const tenant = useQuery(api.tenants.getBySlug, {
     slug: tenantSlug,
@@ -917,7 +929,7 @@ export function ResourceCalendar() {
               Block Time
             </button>
             <a
-              href="/book"
+              href={linkFor("/book")}
               className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
             >
               Add booking
@@ -1109,13 +1121,14 @@ export function ResourceCalendar() {
           </div>
         ) : (
           <>
-            <UnallocatedPanel bookings={unallocatedBookings} />
+            <UnallocatedPanel bookings={unallocatedBookings} linkFor={linkFor} />
 
             <MobileAgenda
               bookings={bookingsForDay}
               rooms={filteredRooms}
               blockedTimes={blockedTimesForDay}
               tenantTimezone={tenantTimezone}
+              linkFor={linkFor}
             />
 
             <div className="hidden overflow-x-auto rounded-xl border border-border lg:block">
@@ -1176,6 +1189,7 @@ export function ResourceCalendar() {
                               bookings={roomBookings}
                               blockedTimes={blockedTimesForDay}
                               hourCount={hourCount}
+                              linkFor={linkFor}
                             />
                           );
                         })}

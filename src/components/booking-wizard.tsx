@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { zonedDateTimeToIso } from "@/lib/date-time";
 import { formatBlockTime } from "@/lib/format";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { useTenantLink } from "@/lib/use-tenant-link";
 import {
   bookingBlocksFromSessionWindow,
   evaluateBookingNoticeWindow,
@@ -197,7 +198,12 @@ function OptionCardSkeletons({ count = 3 }: { count?: number }) {
   );
 }
 
-export function BookingWizard({ tenantSlug }: { tenantSlug: string }) {
+export function BookingWizard({
+  tenantSlug,
+}: {
+  tenantSlug: string;
+}) {
+  const linkFor = useTenantLink(tenantSlug);
   const auth = useOptionalDashboardAuth();
   const tenant = useQuery(api.tenants.getBySlug, { slug: tenantSlug });
   const campuses = useQuery(api.tenants.listCampuses, { tenantSlug });
@@ -556,7 +562,9 @@ export function BookingWizard({ tenantSlug }: { tenantSlug: string }) {
 
       setTrackingId(requestId);
       setStatus("Request submitted.");
-      window.location.href = `/requests/${requestId}?email=${encodeURIComponent(requesterEmail)}&submitted=1`;
+      window.location.href = linkFor(
+        `/requests/${requestId}?email=${encodeURIComponent(requesterEmail)}&submitted=1`
+      );
       form.reset();
       setRoomQuantities({});
       setRequestedRoomIds([]);
@@ -631,7 +639,7 @@ export function BookingWizard({ tenantSlug }: { tenantSlug: string }) {
           icon={AlertTriangle}
           title="Booking form unavailable"
           message="We could not load the booking workspace. Refresh the page, or contact staff if this keeps happening."
-          action={{ label: "Open calendar", href: "/calendar" }}
+          action={{ label: "Open calendar", href: linkFor("/calendar") }}
         />
       </>
     );
@@ -972,9 +980,9 @@ export function BookingWizard({ tenantSlug }: { tenantSlug: string }) {
             <button disabled={submitting || bookingNoticeBlocksSubmission} className={`${primaryButtonClass} w-full sm:w-auto`}>
               {submitting ? "Submitting..." : "Submit request"}
             </button>
-            <Link href="/calendar" className={`${subtleButtonClass} w-full sm:w-auto`}>Back to calendar</Link>
+            <Link href={linkFor("/calendar")} className={`${subtleButtonClass} w-full sm:w-auto`}>Back to calendar</Link>
             {status ? <span className="text-sm text-muted-foreground sm:ml-1">{status}</span> : null}
-            {trackingId ? <Link href={`/requests/${trackingId}`} className="text-sm font-semibold text-primary">View tracking page</Link> : null}
+            {trackingId ? <Link href={linkFor(`/requests/${trackingId}`)} className="text-sm font-semibold text-primary">View tracking page</Link> : null}
           </div>
         </Card>
       </form>

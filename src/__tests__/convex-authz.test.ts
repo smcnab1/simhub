@@ -3,6 +3,7 @@ import { ConvexError } from "convex/values";
 import {
   membershipsForAuth,
   requireAdmin,
+  requirePlatformDeveloper,
   requireStaff,
   requireTenantAccess,
 } from "../../convex/authz";
@@ -351,5 +352,34 @@ describe("Convex tenant authz helpers", () => {
         user: { role: "Admin" },
       },
     ]);
+  });
+
+  it("allows platform Developer auth without tenant membership", () => {
+    const ctx = createCtx({ identity: null, tenants: [], users: [] });
+
+    expect(
+      requirePlatformDeveloper(ctx as never, {
+        platformRole: "Developer",
+        workosUserId: "dev_123",
+        email: "dev@example.com",
+      })
+    ).toMatchObject({
+      platformRole: "Developer",
+      identity: {
+        platformRole: "Developer",
+        workosUserId: "dev_123",
+      },
+    });
+  });
+
+  it("rejects non-Developer platform auth", () => {
+    const ctx = createCtx({ identity: null, tenants: [], users: [] });
+
+    expect(() =>
+      requirePlatformDeveloper(ctx as never, {
+        workosUserId: "staff_123",
+        email: "staff@example.com",
+      })
+    ).toThrow(ConvexError);
   });
 });

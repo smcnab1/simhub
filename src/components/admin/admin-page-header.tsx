@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ChevronRight, HomeIcon } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useDashboardAuth } from "@/components/dashboard-auth";
+import { useTenantLink } from "@/lib/use-tenant-link";
 import type { ReactNode } from "react";
 
 interface BreadcrumbItem {
@@ -26,6 +28,9 @@ export function AdminPageHeader({
   actions,
   className,
 }: AdminPageHeaderProps) {
+  const auth = useDashboardAuth();
+  const linkFor = useTenantLink(auth.tenantSlug);
+
   return (
     <div className={cn("flex flex-col gap-1 pb-6", className)}>
       {breadcrumbs && breadcrumbs.length > 0 && (
@@ -33,7 +38,7 @@ export function AdminPageHeader({
           <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
             <li>
               <Link
-                href="/dashboard/admin/facility"
+                href={linkFor("/dashboard/admin/facility")}
                 className="flex items-center gap-1 hover:text-foreground transition-colors"
               >
                 <HomeIcon className="size-3" aria-hidden="true" />
@@ -45,7 +50,7 @@ export function AdminPageHeader({
                 <ChevronRight className="size-3" aria-hidden="true" />
                 {crumb.href ? (
                   <Link
-                    href={crumb.href}
+                    href={linkFor(crumb.href)}
                     className="hover:text-foreground transition-colors font-medium"
                   >
                     {crumb.label}

@@ -2,7 +2,15 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { authContextValidator, membershipsForAuth, requireAdmin, requireStaff, tenantByCustomDomain, tenantBySlug } from "./authz";
+import {
+  authContextValidator,
+  membershipsForAuth,
+  requireAdmin,
+  requirePlatformDeveloper,
+  requireStaff,
+  tenantByCustomDomain,
+  tenantBySlug,
+} from "./authz";
 import {
   campusIsActive,
   normalizeCampusName,
@@ -143,8 +151,7 @@ export const listMembershipsForAuth = query({
   args: { auth: authContextValidator },
   handler: async (ctx, args) => {
     const memberships = await membershipsForAuth(ctx, args.auth);
-
-    return memberships
+    const returnedMemberships = memberships
       .map(({ tenant, user }) => ({
         tenantId: tenant._id,
         tenantName: tenant.name,
@@ -155,6 +162,188 @@ export const listMembershipsForAuth = query({
         role: user.role,
       }))
       .sort((a, b) => a.tenantName.localeCompare(b.tenantName));
+
+    console.info(
+      "[tenants:listMembershipsForAuth] returned memberships",
+      returnedMemberships.map((membership) => ({
+        tenantSlug: membership.tenantSlug,
+        slug: undefined,
+        "tenant?.slug": undefined,
+        tenantName: membership.tenantName,
+        role: membership.role,
+        tenantId: membership.tenantId,
+        workosOrganizationId: membership.workosOrganizationId,
+      }))
+    );
+
+    return returnedMemberships;
+  },
+});
+
+const platformTenantFields = {
+  name: v.string(),
+  slug: v.string(),
+  timezone: v.optional(v.string()),
+  contactEmail: v.optional(v.string()),
+  notificationEmails: v.optional(v.array(v.string())),
+  notificationEmailsEnabled: v.optional(v.boolean()),
+  hoursOfOperation: v.optional(v.string()),
+  uploadMaxBytes: v.optional(v.number()),
+  minimumAdvanceBookingDays: v.optional(v.number()),
+  maximumAdvanceBookingDays: v.optional(v.number()),
+  bookingNoticeViolationMode: v.optional(
+    v.union(v.literal("Block"), v.literal("Warn"))
+  ),
+  workosOrganizationId: v.optional(v.string()),
+  customDomain: v.optional(v.string()),
+  active: v.optional(v.boolean()),
+};
+
+type PlatformTenantInput = {
+  name: string;
+  slug: string;
+  timezone?: string;
+  contactEmail?: string;
+  notificationEmails?: string[];
+  notificationEmailsEnabled?: boolean;
+  hoursOfOperation?: string;
+  uploadMaxBytes?: number;
+  minimumAdvanceBookingDays?: number;
+  maximumAdvanceBookingDays?: number;
+  bookingNoticeViolationMode?: "Block" | "Warn";
+  workosOrganizationId?: string;
+  customDomain?: string;
+  active?: boolean;
+};
+
+function normalizeTenantSlug(slug: string) {
+  return slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
+}
+
+function normalizeOptionalString(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function platformTenantPayload(input: PlatformTenantInput) {
+  return {
+    name: input.name.trim(),
+    slug: normalizeTenantSlug(input.slug),
+    timezone: normalizeOptionalString(input.timezone) ?? "Europe/London",
+    contactEmail: normalizeOptionalString(input.contactEmail) ?? "admin@example.local",
+    notificationEmails: input.notificationEmails ?? [],
+    notificationEmailsEnabled: input.notificationEmailsEnabled ?? true,
+    hoursOfOperation: normalizeOptionalString(input.hoursOfOperation) ?? "Mon-Fri 08:00-18:00",
+    uploadMaxBytes: input.uploadMaxBytes ?? 104_857_600,
+    minimumAdvanceBookingDays: input.minimumAdvanceBookingDays,
+    maximumAdvanceBookingDays: input.maximumAdvanceBookingDays,
+    bookingNoticeViolationMode: input.bookingNoticeViolationMode,
+    workosOrganizationId: normalizeOptionalString(input.workosOrganizationId),
+    customDomain: normalizeOptionalString(input.customDomain)?.toLowerCase(),
+    active: input.active ?? true,
+  };
+}
+
+export const listPlatformTenants = query({
+  args: { auth: authContextValidator },
+  handler: async (ctx, args) => {
+    requirePlatformDeveloper(ctx, args.auth);
+    const tenants = await ctx.db.query("tenants").collect();
+
+    return tenants
+      .map((tenant) => ({
+        tenantId: tenant._id,
+        name: tenant.name,
+        slug: tenant.slug,
+        timezone: tenant.timezone,
+        contactEmail: tenant.contactEmail,
+        notificationEmails: tenant.notificationEmails,
+        notificationEmailsEnabled: tenant.notificationEmailsEnabled,
+        hoursOfOperation: tenant.hoursOfOperation,
+        uploadMaxBytes: tenant.uploadMaxBytes,
+        minimumAdvanceBookingDays: tenant.minimumAdvanceBookingDays,
+        maximumAdvanceBookingDays: tenant.maximumAdvanceBookingDays,
+        bookingNoticeViolationMode: tenant.bookingNoticeViolationMode,
+        workosOrganizationId: tenant.workosOrganizationId,
+        customDomain: tenant.customDomain,
+        active: tenant.active ?? true,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+export const createPlatformTenant = mutation({
+  args: {
+    auth: authContextValidator,
+    tenant: v.object(platformTenantFields),
+  },
+  handler: async (ctx, args) => {
+    requirePlatformDeveloper(ctx, args.auth);
+    const payload = platformTenantPayload(args.tenant);
+
+    if (!payload.slug) {
+      throw new Error("Tenant slug is required.");
+    }
+
+    const existing = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", payload.slug))
+      .unique();
+
+    if (existing) {
+      throw new Error("A tenant with this slug already exists.");
+    }
+
+    const tenantId = await ctx.db.insert("tenants", payload);
+    return { tenantId, slug: payload.slug };
+  },
+});
+
+export const updatePlatformTenant = mutation({
+  args: {
+    auth: authContextValidator,
+    tenantId: v.id("tenants"),
+    tenant: v.object(platformTenantFields),
+  },
+  handler: async (ctx, args) => {
+    requirePlatformDeveloper(ctx, args.auth);
+    const payload = platformTenantPayload(args.tenant);
+
+    if (!payload.slug) {
+      throw new Error("Tenant slug is required.");
+    }
+
+    await ctx.db.patch(args.tenantId, payload);
+    return { tenantId: args.tenantId, slug: payload.slug };
+  },
+});
+
+export const listPlatformUsers = query({
+  args: { auth: authContextValidator },
+  handler: async (ctx, args) => {
+    requirePlatformDeveloper(ctx, args.auth);
+    const [tenants, users] = await Promise.all([
+      ctx.db.query("tenants").collect(),
+      ctx.db.query("users").collect(),
+    ]);
+    const tenantsById = new Map(tenants.map((tenant) => [tenant._id, tenant]));
+
+    return users
+      .map((user) => {
+        const tenant = tenantsById.get(user.tenantId);
+
+        return {
+          userId: user._id,
+          tenantId: user.tenantId,
+          tenantName: tenant?.name,
+          tenantSlug: tenant?.slug,
+          workosUserId: user.workosUserId,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        };
+      })
+      .sort((a, b) => a.email.localeCompare(b.email));
   },
 });
 

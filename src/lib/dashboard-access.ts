@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, roleFromWorkOS } from "@/lib/auth";
 import { canAccessAdmin, canAccessDeveloper, canAccessStaff } from "@/lib/authz-logic";
 import {
   LEGACY_TENANT_COOKIE_NAME,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/config";
 import type { Role } from "@/lib/domain";
 import { getTenantHostResolution } from "@/lib/tenant-resolver";
+import { demoTenantFallbackEnabled } from "@/lib/tenant-url";
 
 type DashboardAccessOptions = {
   requiredRole?: "tenant" | "staff" | "admin" | "developer";
@@ -28,9 +29,11 @@ export type DashboardAccess =
           tenantSlug: string;
           role: Role;
           customDomain?: string;
+          workosOrganizationId?: string;
         }>;
         workosUserId?: string;
         email?: string;
+        platformRole?: "Developer";
         workosOrganizationId?: string;
       };
     }
@@ -46,10 +49,84 @@ export type DashboardAccess =
       email?: string;
     };
 
+type RawMembership = {
+  tenantName?: unknown;
+  tenantSlug?: unknown;
+  slug?: unknown;
+  tenant?: {
+    name?: unknown;
+    slug?: unknown;
+    customDomain?: unknown;
+    workosOrganizationId?: unknown;
+  } | null;
+  role?: unknown;
+  customDomain?: unknown;
+  workosOrganizationId?: unknown;
+  tenantId?: unknown;
+};
+
+type NormalizedMembership = {
+  tenantName: string;
+  tenantSlug: string;
+  role: Role;
+  customDomain?: string;
+  workosOrganizationId?: string;
+};
+
 function hasRequiredRole(role: Role, requiredRole: "tenant" | "staff" | "admin" | "developer") {
   if (requiredRole === "tenant") return true;
   if (requiredRole === "developer") return canAccessDeveloper(role);
   return requiredRole === "admin" ? canAccessAdmin(role) : canAccessStaff(role);
+}
+
+function normalizeString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeSlug(value: unknown) {
+  return normalizeString(value).toLowerCase();
+}
+
+function normalizeRole(role: unknown): Role {
+  const normalized = normalizeSlug(role);
+  if (normalized === "developer") return "Developer";
+  if (normalized === "admin") return "Admin";
+  if (normalized === "staff") return "Staff";
+  return "Requester";
+}
+
+function normalizeMembership(membership: RawMembership): NormalizedMembership {
+  const tenantSlug = normalizeSlug(
+    membership.tenantSlug ?? membership.slug ?? membership.tenant?.slug
+  );
+  const tenantName =
+    normalizeString(membership.tenantName ?? membership.tenant?.name) || tenantSlug;
+  const customDomain = normalizeSlug(
+    membership.customDomain ?? membership.tenant?.customDomain
+  );
+  const workosOrganizationId = normalizeString(
+    membership.workosOrganizationId ?? membership.tenant?.workosOrganizationId
+  );
+
+  return {
+    tenantName,
+    tenantSlug,
+    role: normalizeRole(membership.role),
+    ...(customDomain ? { customDomain } : {}),
+    ...(workosOrganizationId ? { workosOrganizationId } : {}),
+  };
+}
+
+function membershipLogShape(membership: RawMembership) {
+  return {
+    tenantSlug: membership.tenantSlug,
+    slug: membership.slug,
+    "tenant?.slug": membership.tenant?.slug,
+    tenantName: membership.tenantName,
+    role: membership.role,
+    tenantId: membership.tenantId,
+    workosOrganizationId: membership.workosOrganizationId,
+  };
 }
 
 async function listMembershipsForAuth(auth: {
@@ -62,7 +139,12 @@ async function listMembershipsForAuth(auth: {
   workosOrganizationId?: string;
 }) {
   try {
-    return await fetchQuery(api.tenants.listMembershipsForAuth, { auth });
+    const memberships = await fetchQuery(api.tenants.listMembershipsForAuth, { auth });
+    console.info(
+      "[dashboard-access] listMembershipsForAuth memberships",
+      (memberships as RawMembership[]).map(membershipLogShape)
+    );
+    return memberships as RawMembership[];
   } catch (error) {
     console.error("[dashboard-access] Could not load tenant memberships", error);
     return [];
@@ -87,30 +169,49 @@ export async function getDashboardAccess({
     workosUserId: workosUser.id,
     email: workosUser.email,
     workosOrganizationId: session.organizationId,
+    ...(roleFromWorkOS({
+      user: session.user,
+      role: session.role,
+      roles: session.roles,
+    }) === "Developer"
+      ? { platformRole: "Developer" as const }
+      : {}),
   };
-  const memberships = await listMembershipsForAuth(authIdentity);
+  const rawMemberships = await listMembershipsForAuth(authIdentity);
+  const memberships = rawMemberships
+    .map(normalizeMembership)
+    .filter((membership) => membership.tenantSlug);
   const cookieStore = await cookies();
   const hostTenant = await getTenantHostResolution();
   const hostTenantSlug =
     hostTenant.kind === "slug"
-      ? hostTenant.tenantSlug
+      ? normalizeSlug(hostTenant.tenantSlug)
       : hostTenant.kind === "custom"
       ? memberships.find(
-          (membership) => membership.customDomain === hostTenant.customHost
+          (membership) => membership.customDomain === normalizeSlug(hostTenant.customHost)
         )?.tenantSlug
       : null;
   const selectedSlug =
     hostTenantSlug ||
-    cookieStore.get(TENANT_COOKIE_NAME)?.value ||
-    cookieStore.get(LEGACY_TENANT_COOKIE_NAME)?.value ||
-    TENANT_SLUG;
+    normalizeSlug(cookieStore.get(TENANT_COOKIE_NAME)?.value) ||
+    normalizeSlug(cookieStore.get(LEGACY_TENANT_COOKIE_NAME)?.value) ||
+    (demoTenantFallbackEnabled() ? normalizeSlug(TENANT_SLUG) : "");
   const selectedMembership = hostTenantSlug
     ? memberships.find((membership) => membership.tenantSlug === hostTenantSlug)
-    : memberships.find((membership) => membership.tenantSlug === selectedSlug) ??
+    : (selectedSlug
+        ? memberships.find((membership) => membership.tenantSlug === selectedSlug)
+        : undefined) ??
       memberships.find((membership) => canAccessStaff(membership.role)) ??
       memberships[0];
 
   if (!selectedMembership) {
+    console.warn("[dashboard-access] No selected membership", {
+      hostTenantSlug,
+      selectedSlug,
+      rawMemberships,
+      memberships,
+    });
+
     return {
       ok: false,
       reason: "no_membership",
@@ -139,6 +240,7 @@ export async function getDashboardAccess({
         tenantSlug: membership.tenantSlug,
         role: membership.role,
         customDomain: membership.customDomain,
+        workosOrganizationId: membership.workosOrganizationId,
       })),
     },
   };
