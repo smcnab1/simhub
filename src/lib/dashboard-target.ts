@@ -1,4 +1,4 @@
-import { fetchMutation, fetchQuery } from "convex/nextjs";
+import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
 import { roleFromWorkOS } from "@/lib/auth";
 import { PRODUCT_ROOT_DOMAIN, normalizeHost } from "@/lib/tenant-resolver";
@@ -112,23 +112,16 @@ export async function getDashboardTargetForUser(
   const workosUserId = userAuth.workosUserId ?? userAuth.user?.id;
   const email = userAuth.email ?? userAuth.user?.email;
   let memberships: RawMembership[];
-  const syncAuth = {
-    user: safeAuthUser(userAuth.user),
-    workosUserId,
-    email,
-    workosOrganizationId: userAuth.workosOrganizationId ?? userAuth.organizationId,
-    platformRole: userAuth.platformRole,
-  };
-
-  try {
-    await fetchMutation(api.tenants.syncAuthenticatedUser, { auth: syncAuth });
-  } catch (error) {
-    console.error("[dashboard-target] Could not sync authenticated user", error);
-  }
 
   try {
     memberships = (await fetchQuery(api.tenants.listMembershipsForAuth, {
-      auth: syncAuth,
+      auth: {
+        user: safeAuthUser(userAuth.user),
+        workosUserId,
+        email,
+        workosOrganizationId: userAuth.workosOrganizationId ?? userAuth.organizationId,
+        platformRole: userAuth.platformRole,
+      },
     })) as RawMembership[];
   } catch (error) {
     console.error("[dashboard-target] Could not load tenant memberships", error);
