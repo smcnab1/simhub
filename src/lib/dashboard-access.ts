@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { WorkOS } from "@workos-inc/node";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
 import { getCurrentUser, roleFromWorkOS } from "@/lib/auth";
@@ -145,23 +144,6 @@ function membershipLogShape(membership: RawMembership) {
   };
 }
 
-async function fetchCurrentWorkOSUser(userId?: string) {
-  if (!userId || !process.env.WORKOS_API_KEY) {
-    return null;
-  }
-
-  try {
-    const workos = new WorkOS(process.env.WORKOS_API_KEY);
-    return await workos.userManagement.getUser(userId);
-  } catch (error) {
-    console.warn("[dashboard-access] Could not refresh WorkOS user metadata", {
-      userId,
-      error,
-    });
-    return null;
-  }
-}
-
 async function listMembershipsForAuth(auth: {
   user?: {
     id?: string;
@@ -236,7 +218,11 @@ export async function getDashboardAccess({
     workosUserId: workosUser.id,
     email: workosUser.email,
     workosOrganizationId: session.organizationId,
-    ...(canAccessDeveloper(platformRole)
+    ...(roleFromWorkOS({
+      user: session.user,
+      role: session.role,
+      roles: session.roles,
+    }) === "Developer"
       ? { platformRole: "Developer" as const }
       : {}),
   };
