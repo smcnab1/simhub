@@ -15,34 +15,41 @@ export function PlatformDevPage({
   activeHref,
   children,
 }: PlatformDevPageProps) {
-  const tools = getDeveloperNavigationItems().filter((tool) =>
-    ["/dev", "/dev/tenants", "/dev/users", "/dev/bootstrap"].includes(tool.url)
-  );
+  const tools = getDeveloperNavigationItems();
   const activeTool = tools.find((tool) => tool.url === activeHref);
   const Icon = activeTool?.icon;
 
   return (
     <div className="flex flex-col gap-6 pb-16">
-      <div className="flex flex-col gap-3 border-b border-border pb-5">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+      <div className="rounded-lg border border-border bg-card/80 p-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300">
             {Icon ? <Icon className="size-5" /> : null}
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Platform Developer
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {title}
-            </h1>
+            </div>
+            <div className="min-w-0">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                  Platform Developer
+                </p>
+                <span className="rounded-sm border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-200">
+                  Dev area
+                </span>
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                {title}
+              </h1>
+              <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                {description}
+              </p>
+            </div>
           </div>
         </div>
-        <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>
       </div>
 
       {children}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-2 sm:grid-cols-2 lg:hidden">
         {tools.map((tool) => {
           const ToolIcon = tool.icon;
           const active = tool.url === activeHref;
@@ -52,13 +59,20 @@ export function PlatformDevPage({
               key={tool.url}
               href={tool.url}
               className={cn(
-                "flex items-start gap-3 rounded-lg border p-3 text-sm transition-colors",
+                "flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
                 active
-                  ? "border-primary bg-primary text-primary-foreground"
+                  ? "border-cyan-500/30 bg-cyan-500/10 text-foreground"
                   : "border-border bg-card hover:bg-accent hover:text-accent-foreground"
               )}
             >
-              {ToolIcon ? <ToolIcon className="mt-0.5 size-4 shrink-0" /> : null}
+              {ToolIcon ? (
+                <ToolIcon
+                  className={cn(
+                    "size-4 shrink-0",
+                    active ? "text-cyan-700 dark:text-cyan-300" : undefined
+                  )}
+                />
+              ) : null}
               <span className="font-medium">{tool.title}</span>
             </Link>
           );

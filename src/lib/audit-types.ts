@@ -16,6 +16,10 @@ export const auditEventTypes = [
   "blocked_time.created",
   "blocked_time.updated",
   "blocked_time.deleted",
+  "tenant.created",
+  "user.invited",
+  "user.created",
+  "membership.assigned",
 ] as const;
 
 export const auditEntityTypes = [
@@ -64,6 +68,10 @@ export function auditEventLabel(eventType: string) {
     "blocked_time.created": "Blocked Time Created",
     "blocked_time.updated": "Blocked Time Updated",
     "blocked_time.deleted": "Blocked Time Deleted",
+    "tenant.created": "Tenant Created",
+    "user.invited": "User Invited",
+    "user.created": "User Created",
+    "membership.assigned": "Membership Assigned",
   };
 
   if (labels[eventType]) return labels[eventType];
