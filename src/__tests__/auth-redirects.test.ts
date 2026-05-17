@@ -4,6 +4,7 @@ import {
   getAuthCallbackUrl,
   getSafeAuthReturnUrl,
   getSafeReturnPath,
+  shouldResolveDashboardTarget,
 } from "@/lib/auth-redirects";
 
 function request(url: string, headers?: Record<string, string>) {
@@ -21,7 +22,7 @@ describe("tenant auth redirects", () => {
     expect(getAuthCallbackUrl(req)).toBe("https://uwl.rooms.simhq.app/auth/callback");
   });
 
-  it("returns uwl callbacks to the uwl dashboard", () => {
+  it("marks dashboard callbacks for membership-based resolution", () => {
     const req = request("https://uwl.rooms.simhq.app/auth/callback", {
       host: "uwl.rooms.simhq.app",
       "x-forwarded-proto": "https",
@@ -30,6 +31,13 @@ describe("tenant auth redirects", () => {
     expect(getSafeAuthReturnUrl("/dashboard", req).toString()).toBe(
       "https://uwl.rooms.simhq.app/dashboard"
     );
+    expect(shouldResolveDashboardTarget("/dashboard")).toBe(true);
+  });
+
+  it("does not resolve public return paths as dashboards", () => {
+    expect(shouldResolveDashboardTarget("/")).toBe(false);
+    expect(shouldResolveDashboardTarget("/calendar?tenant=uwl")).toBe(false);
+    expect(shouldResolveDashboardTarget("/book")).toBe(false);
   });
 
   it("does not allow absolute cross-host return paths", () => {

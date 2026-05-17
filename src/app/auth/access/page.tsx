@@ -1,10 +1,10 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "../../../../convex/_generated/api";
 import { getCurrentUser } from "@/lib/auth";
 import { APP_NAME, TENANT_COOKIE_NAME } from "@/lib/config";
-import { getTenantAwareLinkFor } from "@/lib/server-tenant-url";
+import { dashboardHrefForTenant } from "@/lib/dashboard-target";
 
 export const dynamic = "force-dynamic";
 
@@ -59,10 +59,9 @@ async function selectTenant(formData: FormData) {
     // should persist across tenant subdomains.
     maxAge: 60 * 60 * 24 * 400,
   });
-  const linkFor = await getTenantAwareLinkFor({
-    selectedTenantSlug: membership.tenantSlug,
-  });
-  redirect(linkFor("/dashboard"));
+  const headerStore = await headers();
+  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+  redirect(dashboardHrefForTenant(membership.tenantSlug, host));
 }
 
 export default async function AccessPage() {

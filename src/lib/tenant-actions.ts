@@ -1,13 +1,12 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
 import { getCurrentUser } from "@/lib/auth";
-import { canAccessStaff } from "@/lib/authz-logic";
+import { dashboardHrefForTenant } from "@/lib/dashboard-target";
 import { TENANT_COOKIE_NAME } from "@/lib/config";
-import { getTenantAwareLinkFor } from "@/lib/server-tenant-url";
 
 export async function switchTenant(formData: FormData) {
   const session = await getCurrentUser();
@@ -25,9 +24,7 @@ export async function switchTenant(formData: FormData) {
       workosOrganizationId: session.organizationId,
     },
   });
-  const membership = memberships.find(
-    (item) => item.tenantSlug === tenantSlug && canAccessStaff(item.role)
-  );
+  const membership = memberships.find((item) => item.tenantSlug === tenantSlug);
 
   if (!membership) {
     redirect("/auth/access");
@@ -42,8 +39,7 @@ export async function switchTenant(formData: FormData) {
     // should be shared between tenant subdomains.
     maxAge: 60 * 60 * 24 * 400,
   });
-  const linkFor = await getTenantAwareLinkFor({
-    selectedTenantSlug: membership.tenantSlug,
-  });
-  redirect(linkFor("/dashboard"));
+  const headerStore = await headers();
+  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
+  redirect(dashboardHrefForTenant(membership.tenantSlug, host));
 }

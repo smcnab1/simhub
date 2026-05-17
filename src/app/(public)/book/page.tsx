@@ -2,7 +2,7 @@ import { BookingWizard } from "@/components/booking-wizard";
 import { PublicNav, PageShell } from "@/components/ui";
 import { TenantNotFound } from "@/components/tenant-not-found";
 import { resolveTenantForRequest } from "@/lib/server-tenant";
-import { getTenantAwareLinkFor } from "@/lib/server-tenant-url";
+import { getPublicDashboardHref, getTenantAwareLinkFor } from "@/lib/server-tenant-url";
 import { demoTenantFallbackEnabled } from "@/lib/tenant-url";
 
 export const dynamic = "force-dynamic";
@@ -32,10 +32,15 @@ export default async function BookingWizardPage({ searchParams }: BookingWizardP
     tenantFromQuery: tenantParam,
     selectedTenantSlug: tenant.tenant.slug,
   });
+  const dashboardHref = await getPublicDashboardHref();
 
   return (
     <>
-      <PublicNav tenantName={tenant.tenant.name} linkFor={linkFor} />
+      <PublicNav
+        tenantName={tenant.tenant.name}
+        linkFor={linkFor}
+        dashboardHref={dashboardHref}
+      />
       <PageShell>
         <BookingWizard tenantSlug={tenant.tenant.slug} />
       </PageShell>
