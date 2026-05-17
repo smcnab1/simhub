@@ -12,6 +12,15 @@ export type AuthzFailureCode =
   | "insufficient_role";
 
 export const authContextValidator = v.object({
+  user: v.optional(
+    v.object({
+      id: v.optional(v.string()),
+      email: v.optional(v.string()),
+      firstName: v.optional(v.string()),
+      lastName: v.optional(v.string()),
+      metadata: v.optional(v.any()),
+    })
+  ),
   tenantSlug: v.optional(v.string()),
   tenantName: v.optional(v.string()),
   role: v.optional(
@@ -27,6 +36,10 @@ export const authContextValidator = v.object({
       v.object({
         tenantName: v.string(),
         tenantSlug: v.string(),
+        tenantId: v.optional(v.string()),
+        customDomain: v.optional(v.string()),
+        workosOrganizationId: v.optional(v.string()),
+        userId: v.optional(v.string()),
         role: v.union(
           v.literal("Developer"),
           v.literal("Admin"),
@@ -42,12 +55,23 @@ export const authContextValidator = v.object({
 });
 
 export type ConvexAuthContext = {
+  user?: {
+    id?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    metadata?: unknown;
+  };
   tenantSlug?: string;
   tenantName?: string;
   role?: TenantRole;
   memberships?: Array<{
     tenantName: string;
     tenantSlug: string;
+    tenantId?: string;
+    customDomain?: string;
+    workosOrganizationId?: string;
+    userId?: string;
     role: TenantRole;
   }>;
   workosUserId?: string;
@@ -67,11 +91,11 @@ function normalizeEmail(email: string) {
 }
 
 function workosUserIdFromAuth(auth: ConvexAuthContext) {
-  return auth.workosUserId?.trim() || null;
+  return auth.workosUserId?.trim() || auth.user?.id?.trim() || null;
 }
 
 function emailFromAuth(auth: ConvexAuthContext) {
-  const email = auth.email?.trim();
+  const email = auth.email?.trim() || auth.user?.email?.trim();
   return email ? normalizeEmail(email) : null;
 }
 
@@ -229,6 +253,41 @@ async function findDeveloperUserForAuth(ctx: Ctx, auth: ConvexAuthContext) {
 export async function membershipsForAuth(ctx: Ctx, auth: ConvexAuthContext) {
   const workosUserId = workosUserIdFromAuth(auth);
   const email = emailFromAuth(auth);
+
+  if (auth.memberships?.length) {
+    const memberships = await Promise.all(
+      auth.memberships.map(async (membership) => {
+        const tenant = await tenantBySlug(ctx, membership.tenantSlug);
+        if (!tenant) {
+          return null;
+        }
+
+        const user = await userForTenant(ctx, tenant, auth);
+        if (user) {
+          return { tenant, user };
+        }
+
+        return {
+          tenant,
+          user: {
+            _id: membership.userId ?? `membership:${tenant._id}`,
+            tenantId: tenant._id,
+            workosUserId: workosUserId ?? "",
+            email: email ?? "",
+            name: "",
+            role: membership.role,
+          } as Doc<"users">,
+        };
+      })
+    );
+
+    return memberships.filter(
+      (
+        membership
+      ): membership is { tenant: Doc<"tenants">; user: Doc<"users"> } =>
+        membership !== null
+    );
+  }
 
   if (!workosUserId && !email) {
     return [];

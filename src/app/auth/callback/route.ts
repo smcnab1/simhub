@@ -1,6 +1,7 @@
 import { WorkOS } from "@workos-inc/node";
 import { sealData, unsealData } from "iron-session";
 import { type NextRequest, NextResponse } from "next/server";
+import { getSafeAuthReturnUrl } from "@/lib/auth-redirects";
 
 type PKCEState = {
   codeVerifier: string;
@@ -19,12 +20,6 @@ function cookieSettings(requestUrl: string) {
     // if staff sessions should roam across tenant subdomains.
     ...(process.env.WORKOS_COOKIE_DOMAIN ? { domain: process.env.WORKOS_COOKIE_DOMAIN } : {}),
   };
-}
-
-function safeReturnUrl(returnPathname: string | undefined, requestUrl: string) {
-  const url = new URL(returnPathname || "/dashboard", requestUrl);
-  const requestOrigin = new URL(requestUrl).origin;
-  return url.origin === requestOrigin ? url : new URL("/dashboard", requestUrl);
 }
 
 export async function GET(request: NextRequest) {
@@ -68,7 +63,7 @@ export async function GET(request: NextRequest) {
     },
   );
 
-  const response = NextResponse.redirect(safeReturnUrl(returnPathname, request.url));
+  const response = NextResponse.redirect(getSafeAuthReturnUrl(returnPathname, request));
   const sessionCookieName = process.env.WORKOS_COOKIE_NAME || "wos-session";
   response.cookies.set(sessionCookieName, encryptedSession, cookieSettings(request.url));
 

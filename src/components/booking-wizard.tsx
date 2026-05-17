@@ -222,8 +222,9 @@ export function BookingWizard({ tenantSlug }: { tenantSlug: string }) {
     sessionEnd: "",
   });
   const [roomQuantities, setRoomQuantities] = useState<Record<string, number>>({});
-  const roomTypes = useQuery(api.tenants.listRoomTypes, { tenantSlug, campusId: campusId || undefined });
-  const rooms = useQuery(api.tenants.listRooms, { tenantSlug, campusId: campusId || undefined });
+  const resourceArgs = campusId ? { tenantSlug, campusId } : { tenantSlug };
+  const roomTypes = useQuery(api.tenants.listRoomTypes, resourceArgs);
+  const rooms = useQuery(api.tenants.listRooms, resourceArgs);
   const initialLoading = tenant === undefined || campuses === undefined || formConfig === undefined;
   const roomsLoading = rooms === undefined;
   const roomTypesLoading = roomTypes === undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveTenantFromHost } from "@/lib/tenant-resolver";
+import { isAllowedTenantHost, resolveTenantFromHost } from "@/lib/tenant-resolver";
 
 describe("tenant host resolver", () => {
   it("treats the product root as no tenant", () => {
@@ -29,5 +29,12 @@ describe("tenant host resolver", () => {
 
   it("rejects reserved tenant slugs", () => {
     expect(resolveTenantFromHost("www.rooms.simhq.app").tenantSlug).toBeNull();
+  });
+
+  it("allows only product root, tenant subdomains, and dev localhost", () => {
+    expect(isAllowedTenantHost("rooms.simhq.app")).toBe(true);
+    expect(isAllowedTenantHost("uwl.rooms.simhq.app")).toBe(true);
+    expect(isAllowedTenantHost("localhost:3000")).toBe(true);
+    expect(isAllowedTenantHost("evil.example.com")).toBe(false);
   });
 });
