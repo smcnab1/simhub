@@ -28,7 +28,6 @@ import { switchTenant } from "@/lib/tenant-actions"
 import { displayNameFromUser } from "@/lib/user-display"
 import {
   ChevronsUpDownIcon,
-  Code2Icon,
   ShieldCheckIcon,
 } from "lucide-react"
 
@@ -62,7 +61,6 @@ export function AppSidebar({
     platformRole: auth.platformRole,
     environment,
   }).filter((group) => !group.platformOnly)
-  const canUseDeveloperTools = auth.platformRole === "Developer"
   const notificationUnseenCount = useQuery(
     api.notifications.unseenCountByTenantSlug,
     { tenantSlug: auth.tenantSlug, auth }
@@ -151,20 +149,6 @@ export function AppSidebar({
           groups={navGroups}
           notificationUnseenCount={notificationUnseenCount ?? 0}
           selectedTenantSlug={auth.tenantSlug}
-        />
-        <NavSecondary
-          items={[
-            ...(canUseDeveloperTools
-              ? [
-                  {
-                    title: "Developer tools",
-                    url: "/dev",
-                    icon: <Code2Icon />,
-                  },
-                ]
-              : []),
-          ]}
-          className="mt-auto border-t border-sidebar-border pt-2"
         />
       </SidebarContent>
       <SidebarFooter>

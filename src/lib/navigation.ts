@@ -1,26 +1,17 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  ActivityIcon,
   BellIcon,
   BlocksIcon,
   CalendarDaysIcon,
   ClipboardListIcon,
   Code2Icon,
-  DatabaseZapIcon,
-  FlagIcon,
   GaugeIcon,
-  HeartPulseIcon,
-  InfoIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
   MapPinIcon,
   Settings2Icon,
   ShieldCheckIcon,
-  SlidersHorizontalIcon,
   SparklesIcon,
-  TerminalIcon,
-  TestTube2Icon,
-  UserCogIcon,
   UsersIcon,
 } from "lucide-react";
 import { canAccessAdmin, canAccessDeveloper, canAccessStaff } from "@/lib/authz-logic";
@@ -67,16 +58,6 @@ const developerItems: NavigationItem[] = [
   { title: "Tenant Management", url: "/dev/tenants", icon: ShieldCheckIcon },
   { title: "Platform Users", url: "/dev/users", icon: UsersIcon },
   { title: "Seed/Bootstrap Tools", url: "/dev/bootstrap", icon: SparklesIcon },
-  { title: "System Settings", url: "/dev/system-settings", icon: SlidersHorizontalIcon },
-  { title: "Feature Flags", url: "/dev/feature-flags", icon: FlagIcon },
-  { title: "User Impersonation/Login-As", url: "/dev/impersonation", icon: UserCogIcon },
-  { title: "Audit Logs", url: "/dev/audit-logs", icon: ListChecksIcon },
-  { title: "Queue/Jobs Monitor", url: "/dev/jobs", icon: ActivityIcon },
-  { title: "Convex Debug Tools", url: "/dev/convex-debug", icon: DatabaseZapIcon },
-  { title: "Environment Info", url: "/dev/environment", icon: InfoIcon },
-  { title: "System Health", url: "/dev/health", icon: HeartPulseIcon },
-  { title: "Dev Utilities", url: "/dev/utilities", icon: TerminalIcon },
-  { title: "API/Test Tools", url: "/dev/api-tools", icon: TestTube2Icon },
 ];
 
 /**
