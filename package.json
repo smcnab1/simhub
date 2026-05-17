@@ -16,6 +16,8 @@
   "dependencies": {
     "@base-ui/react": "^1.4.1",
     "@hookform/resolvers": "^5.2.2",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "@workos-inc/authkit-nextjs": "^4.0.1",
     "@workos-inc/node": "^9.2.0",
     "class-variance-authority": "^0.7.1",
