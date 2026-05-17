@@ -6,6 +6,11 @@ const platformState = vi.hoisted(() => ({
     role?: unknown;
     roles?: unknown;
   } | null,
+  refreshedUser: null as {
+    id?: string;
+    email?: string;
+    metadata?: Record<string, unknown>;
+  } | null,
   redirectTo: "",
 }));
 
@@ -25,10 +30,22 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+vi.mock("@workos-inc/node", () => ({
+  WorkOS: vi.fn(function WorkOS() {
+    return {
+      userManagement: {
+        getUser: vi.fn(async () => platformState.refreshedUser),
+      },
+    };
+  }),
+}));
+
 describe("platform developer auth", () => {
   beforeEach(() => {
     platformState.session = { user: null };
+    platformState.refreshedUser = null;
     platformState.redirectTo = "";
+    vi.unstubAllEnvs();
   });
 
   it("allows root-domain /dev access for a Developer without a tenantSlug", async () => {
@@ -59,6 +76,28 @@ describe("platform developer auth", () => {
       ok: false,
       reason: "insufficient_role",
       role: "Staff",
+    });
+  });
+
+  it("refreshes WorkOS metadata when the signed session is stale", async () => {
+    vi.stubEnv("WORKOS_API_KEY", "sk_test_123");
+    platformState.session = {
+      user: { id: "dev_123", email: "dev@example.com", metadata: {} },
+      role: "Staff",
+    };
+    platformState.refreshedUser = {
+      id: "dev_123",
+      email: "dev@example.com",
+      metadata: { role: "Developer" },
+    };
+    const { getPlatformAccess } = await import("@/lib/platform-auth");
+
+    await expect(getPlatformAccess()).resolves.toMatchObject({
+      ok: true,
+      auth: {
+        platformRole: "Developer",
+        workosUserId: "dev_123",
+      },
     });
   });
 });

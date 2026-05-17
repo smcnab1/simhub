@@ -6,10 +6,15 @@ import type { Role } from "./domain";
 
 type WorkOSRoleSource = {
   metadata?: Record<string, unknown>;
+  customMetadata?: Record<string, unknown>;
+  custom_metadata?: Record<string, unknown>;
+  platformRole?: unknown;
   role?: unknown;
   roles?: unknown;
   user?: {
     metadata?: Record<string, unknown>;
+    customMetadata?: Record<string, unknown>;
+    custom_metadata?: Record<string, unknown>;
   } | null;
 } | null | undefined;
 
@@ -65,7 +70,21 @@ function normalizeRole(role: unknown): Role | null {
 }
 
 export function roleFromWorkOS(source?: WorkOSRoleSource): Role {
-  const metadataRole = normalizeRole(source?.metadata?.role ?? source?.user?.metadata?.role);
+  const metadataRole = normalizeRole(
+    source?.platformRole ??
+      source?.metadata?.role ??
+      source?.metadata?.platformRole ??
+      source?.customMetadata?.role ??
+      source?.customMetadata?.platformRole ??
+      source?.custom_metadata?.role ??
+      source?.custom_metadata?.platformRole ??
+      source?.user?.metadata?.role ??
+      source?.user?.metadata?.platformRole ??
+      source?.user?.customMetadata?.role ??
+      source?.user?.customMetadata?.platformRole ??
+      source?.user?.custom_metadata?.role ??
+      source?.user?.custom_metadata?.platformRole
+  );
   if (metadataRole) return metadataRole;
 
   const sessionRole = normalizeRole(source?.role);
