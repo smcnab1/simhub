@@ -7,10 +7,12 @@ import { CardSkeletonList, EmptyState, MetricSkeletonGrid } from "@/components/a
 import { useDashboardAuth } from "@/components/dashboard-auth";
 import { Metric, RequestCard, SectionHeader } from "@/components/ui";
 import { formatRequestDate, formatRooms } from "@/lib/format";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 export function DashboardHome() {
   const auth = useDashboardAuth();
   const tenantSlug = auth.tenantSlug;
+  const linkFor = useTenantLink(tenantSlug);
   const isRequester = auth.role === "Requester";
   const summary = useQuery(
     api.bookings.dashboardSummary,
@@ -34,7 +36,7 @@ export function DashboardHome() {
         <SectionHeader
           eyebrow="Requester"
           title="My Bookings"
-          action={<a href="/book" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">New request</a>}
+          action={<a href={linkFor("/book")} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">New request</a>}
         />
         {requestsLoading ? (
           <CardSkeletonList />
@@ -50,6 +52,7 @@ export function DashboardHome() {
                 date: formatRequestDate(request),
                 rooms: [formatRooms(request)],
                 status: request.status,
+                href: linkFor(`/dashboard/requests/${request._id}`),
               }}
             />
             ))}
@@ -59,7 +62,7 @@ export function DashboardHome() {
             icon={CalendarPlus}
             title="No booking requests yet"
             message="Start a request when you know the room, date, and session details. You can return here to track progress."
-            action={{ label: "Book a room", href: "/book" }}
+            action={{ label: "Book a room", href: linkFor("/book") }}
           />
         )}
       </>
@@ -81,7 +84,7 @@ export function DashboardHome() {
       )}
       <div className="mt-6 flex items-center justify-between">
         <h2 className="text-lg font-bold text-foreground">Recent requests</h2>
-        <a href="/dashboard/resource-calendar" className="rounded-lg border border-border bg-card/80 px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted">Open calendar</a>
+        <a href={linkFor("/dashboard/resource-calendar")} className="rounded-lg border border-border bg-card/80 px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted">Open calendar</a>
       </div>
       {requestsLoading ? (
         <div className="mt-6">
@@ -99,6 +102,7 @@ export function DashboardHome() {
               date: formatRequestDate(request),
               rooms: [formatRooms(request)],
               status: request.status,
+              href: linkFor(`/dashboard/requests/${request._id}`),
             }}
           />
           ))}
@@ -108,7 +112,7 @@ export function DashboardHome() {
           icon={FileText}
           title="No booking requests yet"
           message="New requester submissions will appear here for review. Staff can also create a request from the booking form."
-          action={{ label: "Create request", href: "/book" }}
+          action={{ label: "Create request", href: linkFor("/book") }}
           className="mt-6"
         />
       )}

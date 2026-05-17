@@ -6,6 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Card, EmptyAction } from "@/components/ui";
 import { APP_NAME } from "@/lib/config";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 const featureCards = [
   { title: "Public calendar", body: "Monthly search, day selection, and session lists.", Icon: CalendarDays },
@@ -13,7 +14,12 @@ const featureCards = [
   { title: "Admin controls", body: "Roles, facility settings, rooms, request forms, and tenant setup.", Icon: UsersRound },
 ];
 
-export function HomeLanding({ tenantSlug }: { tenantSlug?: string }) {
+export function HomeLanding({
+  tenantSlug,
+}: {
+  tenantSlug?: string;
+}) {
+  const linkFor = useTenantLink(tenantSlug);
   const tenant = useQuery(
     api.tenants.getBySlug,
     tenantSlug ? { slug: tenantSlug } : "skip"
@@ -31,8 +37,8 @@ export function HomeLanding({ tenantSlug }: { tenantSlug?: string }) {
           A booking and operations workspace for simulation centres: public availability, structured room requests, staff approvals, notifications, and tenant administration.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/book" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">Book a Room</Link>
-          <EmptyAction href="/calendar" label="View public calendar" />
+          <Link href={linkFor("/book")} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">Book a Room</Link>
+          <EmptyAction href={linkFor("/calendar")} label="View public calendar" />
           <a href={`mailto:${contactEmail}`} className="rounded-xl px-4 py-2.5 text-sm font-medium text-foreground hover:text-primary">Contact help</a>
         </div>
       </div>

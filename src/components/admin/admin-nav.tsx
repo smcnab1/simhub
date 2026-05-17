@@ -4,11 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { getAdminNavigationItems } from "@/lib/navigation";
+import { useDashboardAuth } from "@/components/dashboard-auth";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 const adminNavItems = getAdminNavigationItems();
 
 export function AdminNav({ className }: { className?: string }) {
   const pathname = usePathname();
+  const auth = useDashboardAuth();
+  const linkFor = useTenantLink(auth.tenantSlug);
 
   return (
     <nav
@@ -26,7 +30,7 @@ export function AdminNav({ className }: { className?: string }) {
           return (
             <Link
               key={item.url}
-              href={item.url}
+              href={linkFor(item.url)}
               className={cn(
                 "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all",
                 isActive
@@ -57,6 +61,8 @@ export function AdminNav({ className }: { className?: string }) {
 /** Compact horizontal pill navigation for mobile */
 export function AdminNavPills({ className }: { className?: string }) {
   const pathname = usePathname();
+  const auth = useDashboardAuth();
+  const linkFor = useTenantLink(auth.tenantSlug);
 
   return (
     <nav
@@ -76,7 +82,7 @@ export function AdminNavPills({ className }: { className?: string }) {
         return (
           <Link
             key={item.url}
-            href={item.url}
+            href={linkFor(item.url)}
             className={cn(
               "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all",
               isActive

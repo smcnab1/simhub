@@ -7,6 +7,7 @@ import { api } from "../../convex/_generated/api";
 import { getCurrentUser } from "@/lib/auth";
 import { canAccessStaff } from "@/lib/authz-logic";
 import { TENANT_COOKIE_NAME } from "@/lib/config";
+import { getTenantAwareLinkFor } from "@/lib/server-tenant-url";
 
 export async function switchTenant(formData: FormData) {
   const session = await getCurrentUser();
@@ -41,5 +42,8 @@ export async function switchTenant(formData: FormData) {
     // should be shared between tenant subdomains.
     maxAge: 60 * 60 * 24 * 400,
   });
-  redirect("/dashboard");
+  const linkFor = await getTenantAwareLinkFor({
+    selectedTenantSlug: membership.tenantSlug,
+  });
+  redirect(linkFor("/dashboard"));
 }

@@ -11,6 +11,7 @@ import { Card, SectionHeader, emptyStateClass, subtleButtonClass } from "@/compo
 import { Skeleton } from "@/components/ui/skeleton";
 import { localDateString } from "@/lib/date-time";
 import { formatTimeRange } from "@/lib/format";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 type PublicEvent = FunctionReturnType<typeof api.bookings.listPublicEvents>[number];
 
@@ -139,6 +140,7 @@ export function PublicCalendar({
   tenantSlug: string;
   initialMonth?: string;
 }) {
+  const linkFor = useTenantLink(tenantSlug);
   const [month, setMonth] = useState(() => normalizeMonth(initialMonth));
   const [selectedDay, setSelectedDay] = useState(() => {
     const initial = normalizeMonth(initialMonth);
@@ -204,7 +206,7 @@ export function PublicCalendar({
         eyebrow="Approved simulation activity"
         title="Public Activity"
         action={
-          <Link href="/book" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">
+          <Link href={linkFor("/book")} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">
             Book a Room
           </Link>
         }
@@ -266,7 +268,7 @@ export function PublicCalendar({
                       ? "Try a different session name or room search."
                       : "Approved sessions will appear here once staff confirm bookings."
                   }
-                  action={{ label: "Book a room", href: "/book" }}
+                  action={{ label: "Book a room", href: linkFor("/book") }}
                   className="mb-4"
                 />
               ) : null}

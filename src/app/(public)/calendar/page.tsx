@@ -2,6 +2,8 @@ import { PublicCalendar } from "@/components/public-calendar";
 import { PublicNav, PageShell } from "@/components/ui";
 import { TenantNotFound } from "@/components/tenant-not-found";
 import { resolveTenantForRequest } from "@/lib/server-tenant";
+import { getTenantAwareLinkFor } from "@/lib/server-tenant-url";
+import { demoTenantFallbackEnabled } from "@/lib/tenant-url";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +20,7 @@ export default async function PublicCalendarPage({ searchParams }: PublicCalenda
   if (tenantParam) urlSearchParams.set("tenant", tenantParam);
 
   const tenant = await resolveTenantForRequest(urlSearchParams, {
-    fallbackToDefault: true,
+    fallbackToDefault: demoTenantFallbackEnabled(),
   });
 
   if (!tenant.ok) {
@@ -30,9 +32,14 @@ export default async function PublicCalendarPage({ searchParams }: PublicCalenda
     );
   }
 
+  const linkFor = await getTenantAwareLinkFor({
+    tenantFromQuery: tenantParam,
+    selectedTenantSlug: tenant.tenant.slug,
+  });
+
   return (
     <>
-      <PublicNav tenantName={tenant.tenant.name} />
+      <PublicNav tenantName={tenant.tenant.name} linkFor={linkFor} />
       <PageShell>
         <PublicCalendar tenantSlug={tenant.tenant.slug} initialMonth={month} />
       </PageShell>

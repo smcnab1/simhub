@@ -18,6 +18,10 @@ vi.mock("@/lib/server-tenant", () => ({
   resolveTenantForRequest: routeState.resolveTenantForRequest,
 }));
 
+vi.mock("@/lib/server-tenant-url", () => ({
+  getTenantAwareLinkFor: vi.fn(async () => (path: string) => path),
+}));
+
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: routeState.getCurrentUser,
 }));

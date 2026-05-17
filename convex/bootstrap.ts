@@ -2,7 +2,12 @@ import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { authContextValidator, membershipsForAuth, requireAdmin } from "./authz";
+import {
+  authContextValidator,
+  membershipsForAuth,
+  requireAdmin,
+  requirePlatformDeveloper,
+} from "./authz";
 
 const SEEDED_TENANT_NAME = "University of Nothing";
 const SEEDED_TENANT_SLUG = "university-of-nothing";
@@ -610,6 +615,17 @@ export const seed = mutation({
       await requireAdmin(ctx, args.tenant?.slug || SEEDED_TENANT_SLUG, args.auth);
     }
 
+    return await seedUniversityOfNothing(ctx, args);
+  },
+});
+
+export const platformSeed = mutation({
+  args: {
+    auth: authContextValidator,
+    ...bootstrapArgsValidator,
+  },
+  handler: async (ctx, args) => {
+    requirePlatformDeveloper(ctx, args.auth);
     return await seedUniversityOfNothing(ctx, args);
   },
 });

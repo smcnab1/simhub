@@ -7,12 +7,14 @@ import { CardSkeletonList, EmptyState } from "@/components/app-state";
 import { useDashboardAuth } from "@/components/dashboard-auth";
 import { RequestCard, SectionHeader } from "@/components/ui";
 import { formatRequestDate, formatRooms } from "@/lib/format";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 const statuses = ["Pending", "Approved", "Confirmed", "Completed", "Declined", "Cancelled"];
 
 export function RequestsList() {
   const auth = useDashboardAuth();
   const tenantSlug = auth.tenantSlug;
+  const linkFor = useTenantLink(tenantSlug);
   const requests = useQuery(api.bookings.listRequests, { tenantSlug, auth });
   const isLoading = requests === undefined;
 
@@ -36,6 +38,7 @@ export function RequestsList() {
               date: formatRequestDate(request),
               rooms: [formatRooms(request)],
               status: request.status,
+              href: linkFor(`/dashboard/requests/${request._id}`),
             }}
           />
           ))}
@@ -45,7 +48,7 @@ export function RequestsList() {
           icon={FileText}
           title="No requests yet"
           message="Booking requests submitted by requesters will appear here. Use the booking form to create the first one."
-          action={{ label: "Create request", href: "/book" }}
+          action={{ label: "Create request", href: linkFor("/book") }}
         />
       )}
     </>

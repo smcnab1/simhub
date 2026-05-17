@@ -9,7 +9,8 @@ export type AuthzFailureCode =
   | "unauthenticated"
   | "tenant_not_found"
   | "user_not_linked_to_tenant"
-  | "insufficient_role";
+  | "insufficient_role"
+  | "platform_developer_required";
 
 export const authContextValidator = v.object({
   user: v.optional(
@@ -23,6 +24,7 @@ export const authContextValidator = v.object({
   ),
   tenantSlug: v.optional(v.string()),
   tenantName: v.optional(v.string()),
+  platformRole: v.optional(v.literal("Developer")),
   role: v.optional(
     v.union(
       v.literal("Developer"),
@@ -64,6 +66,7 @@ export type ConvexAuthContext = {
   };
   tenantSlug?: string;
   tenantName?: string;
+  platformRole?: "Developer";
   role?: TenantRole;
   memberships?: Array<{
     tenantName: string;
@@ -397,4 +400,25 @@ export async function requireAdmin(
   const access = await requireTenantAccess(ctx, tenantSlug, auth);
   requireRole(access.user, ADMIN_ROLES);
   return access;
+}
+
+export function requirePlatformDeveloper(
+  _ctx: Ctx,
+  auth: ConvexAuthContext
+) {
+  if (!workosUserIdFromAuth(auth) && !emailFromAuth(auth)) {
+    fail("unauthenticated", "Sign in to access platform developer tools.");
+  }
+
+  if (auth.platformRole !== "Developer") {
+    fail(
+      "platform_developer_required",
+      "Only platform Developer users can access this area."
+    );
+  }
+
+  return {
+    identity: auth,
+    platformRole: auth.platformRole,
+  };
 }

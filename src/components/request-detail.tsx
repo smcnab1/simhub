@@ -75,6 +75,7 @@ import {
 } from "@/lib/booking-logic";
 import { auditEventLabel } from "@/lib/audit-types";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -923,6 +924,7 @@ function SubmissionConfirmation({
   request,
   contactEmail,
   isLoggedIn,
+  linkFor,
 }: {
   request: {
     _id: string;
@@ -939,6 +941,7 @@ function SubmissionConfirmation({
   };
   contactEmail: string;
   isLoggedIn: boolean;
+  linkFor: (path: string) => string;
 }) {
   const sessionBlock = request.blocks.find((block) => block.label === "Session") ?? request.blocks[0];
   const roomSummary = formatRooms({
@@ -1015,14 +1018,14 @@ function SubmissionConfirmation({
           </p>
           <div className="flex flex-wrap gap-2 pt-1">
             {isLoggedIn ? (
-              <Link href="/dashboard" className={primaryButtonClass}>
+              <Link href={linkFor("/dashboard")} className={primaryButtonClass}>
                 View my bookings
               </Link>
             ) : null}
-            <Link href={`/requests/${request._id}?email=${encodeURIComponent(request.requesterEmail)}`} className={primaryButtonClass}>
+            <Link href={linkFor(`/requests/${request._id}?email=${encodeURIComponent(request.requesterEmail)}`)} className={primaryButtonClass}>
               Open tracking page
             </Link>
-            <Link href={`/auth/sign-in?returnTo=${encodeURIComponent("/dashboard")}`} className="inline-flex items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50">
+            <Link href={`/auth/sign-in?returnTo=${encodeURIComponent(linkFor("/dashboard"))}`} className="inline-flex items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50">
               Sign in or create account
             </Link>
           </div>
@@ -1046,6 +1049,7 @@ export function RequestDetail({
   publicView?: boolean;
 }) {
   const auth = useOptionalDashboardAuth();
+  const linkFor = useTenantLink(auth?.tenantSlug);
   const searchParams = useSearchParams();
   const emailFromUrl = searchParams.get("email")?.trim() ?? "";
   const isSubmissionConfirmation = publicView && searchParams.get("submitted") === "1";
@@ -1320,6 +1324,7 @@ export function RequestDetail({
         request={request}
         contactEmail={tenant?.contactEmail ?? "simulation@example.edu"}
         isLoggedIn={Boolean(auth)}
+        linkFor={linkFor}
       />
     );
   }

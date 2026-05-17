@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BellIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { toast } from "sonner";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { useTenantLink } from "@/lib/use-tenant-link";
 
 type NotificationDisplay = {
   title: string;
@@ -80,6 +81,7 @@ function parseNotification(message: string, title?: string | undefined): Notific
 
 export function NotificationsList() {
   const auth = useDashboardAuth();
+  const linkFor = useTenantLink(auth.tenantSlug);
   const tenantSlug = auth.tenantSlug;
   const [filter, setFilter] = useState<"unseen" | "all">("unseen");
   const notifications = useQuery(api.notifications.listByTenantSlug, {
@@ -193,7 +195,7 @@ export function NotificationsList() {
                       variant="outline"
                       size="sm"
                       nativeButton={false}
-                      render={<Link href={`/dashboard/requests/${item.requestId}`} />}
+                      render={<Link href={linkFor(`/dashboard/requests/${item.requestId}`)} />}
                     >
                       View request
                       <ChevronRightIcon className="size-4" />
@@ -239,7 +241,7 @@ export function NotificationsList() {
                 ? "New booking activity that needs attention will appear here."
                 : "Notifications are created when booking requests or workflow changes need visibility."
             }
-            action={{ label: "Review requests", href: "/dashboard/requests" }}
+            action={{ label: "Review requests", href: linkFor("/dashboard/requests") }}
             className={emptyStateClass}
           />
         )}
