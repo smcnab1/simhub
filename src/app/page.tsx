@@ -2,7 +2,7 @@ import { HomeLanding } from "@/components/home-landing";
 import { PublicNav, PageShell } from "@/components/ui";
 import { TenantNotFound } from "@/components/tenant-not-found";
 import { resolveTenantForRequest } from "@/lib/server-tenant";
-import { getPublicDashboardHref, getTenantAwareLinkFor } from "@/lib/server-tenant-url";
+import { getTenantAwareLinkFor } from "@/lib/server-tenant-url";
 import { APP_NAME } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,6 @@ export default async function Home({ searchParams }: HomeProps) {
     tenantFromQuery: tenantParam,
     selectedTenantSlug: tenant.ok ? tenant.tenant.slug : undefined,
   });
-  const dashboardHref = await getPublicDashboardHref();
 
   if (!tenant.ok && tenant.reason === "not_found") {
     return (
@@ -37,7 +36,6 @@ export default async function Home({ searchParams }: HomeProps) {
       <PublicNav
         tenantName={tenant.ok ? tenant.tenant.name : undefined}
         linkFor={linkFor}
-        dashboardHref={dashboardHref}
       />
       <PageShell>
         {tenant.ok ? (
@@ -53,7 +51,7 @@ export default async function Home({ searchParams }: HomeProps) {
             </p>
             <div className="mt-6">
               <a
-                href={dashboardHref}
+                href="/auth/dashboard"
                 className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
               >
                 Staff sign in
