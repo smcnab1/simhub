@@ -41,6 +41,7 @@ export default async function PublicCalendarPage({ searchParams }: PublicCalenda
     <>
       <PublicNav
         tenantName={tenant.tenant.name}
+        tenantLogoUrl={tenant.tenant.logoUrl}
         linkFor={linkFor}
       />
       <PageShell>

@@ -121,6 +121,7 @@ export const getPublicTenantBySlug = query({
       ? {
           slug: tenant.slug,
           name: tenant.name,
+          logoUrl: await tenantLogoUrl(ctx, tenant.logoStorageId),
           active: tenant.active ?? true,
         }
       : null;
@@ -141,6 +142,7 @@ export const getPublicTenantByCustomDomain = query({
       ? {
           slug: tenant.slug,
           name: tenant.name,
+          logoUrl: await tenantLogoUrl(ctx, tenant.logoStorageId),
           active: tenant.active ?? true,
         }
       : null;
@@ -151,17 +153,20 @@ export const listMembershipsForAuth = query({
   args: { auth: authContextValidator },
   handler: async (ctx, args) => {
     const memberships = await membershipsForAuth(ctx, args.auth);
-    const returnedMemberships = memberships
-      .map(({ tenant, user }) => ({
-        tenantId: tenant._id,
-        tenantName: tenant.name,
-        tenantSlug: tenant.slug,
-        workosOrganizationId: tenant.workosOrganizationId,
-        customDomain: tenant.customDomain,
-        userId: user._id,
-        role: user.role,
-      }))
-      .sort((a, b) => a.tenantName.localeCompare(b.tenantName));
+    const returnedMemberships = (
+      await Promise.all(
+        memberships.map(async ({ tenant, user }) => ({
+          tenantId: tenant._id,
+          tenantName: tenant.name,
+          tenantSlug: tenant.slug,
+          logoUrl: await tenantLogoUrl(ctx, tenant.logoStorageId),
+          workosOrganizationId: tenant.workosOrganizationId,
+          customDomain: tenant.customDomain,
+          userId: user._id,
+          role: user.role,
+        }))
+      )
+    ).sort((a, b) => a.tenantName.localeCompare(b.tenantName));
 
     console.info(
       "[tenants:listMembershipsForAuth] returned memberships",

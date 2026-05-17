@@ -37,6 +37,7 @@ export default async function BookingWizardPage({ searchParams }: BookingWizardP
     <>
       <PublicNav
         tenantName={tenant.tenant.name}
+        tenantLogoUrl={tenant.tenant.logoUrl}
         linkFor={linkFor}
       />
       <PageShell>

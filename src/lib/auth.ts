@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { unsealData } from "iron-session";
 import { canAccessStaff } from "./authz-logic";
 import type { Role } from "./domain";
+import { displayNameFromUser } from "@/lib/user-display";
 
 type WorkOSRoleSource = {
   metadata?: Record<string, unknown>;
@@ -21,10 +22,19 @@ type WorkOSRoleSource = {
 type WorkOSSessionCookie = {
   accessToken: string;
   user: {
+    id?: string;
+    email?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    name?: string | null;
     metadata?: Record<string, unknown>;
   } | null;
   impersonator?: unknown;
 };
+
+export const displayNameFromWorkOSUser = displayNameFromUser;
 
 export async function getCurrentUser() {
   try {

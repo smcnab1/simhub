@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { WorkOS } from "@workos-inc/node";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
 import { getCurrentUser, roleFromWorkOS } from "@/lib/auth";
@@ -23,14 +24,23 @@ export type DashboardAccess =
       auth: {
         tenantSlug: string;
         tenantName?: string;
+        logoUrl?: string;
         role: Role;
         memberships: Array<{
           tenantName: string;
           tenantSlug: string;
+          logoUrl?: string;
           role: Role;
           customDomain?: string;
           workosOrganizationId?: string;
         }>;
+        user?: {
+          id?: string;
+          email?: string;
+          firstName?: string;
+          lastName?: string;
+          metadata?: Record<string, unknown>;
+        };
         workosUserId?: string;
         email?: string;
         platformRole?: "Developer";
@@ -56,9 +66,11 @@ type RawMembership = {
   tenant?: {
     name?: unknown;
     slug?: unknown;
+    logoUrl?: unknown;
     customDomain?: unknown;
     workosOrganizationId?: unknown;
   } | null;
+  logoUrl?: unknown;
   role?: unknown;
   customDomain?: unknown;
   workosOrganizationId?: unknown;
@@ -68,6 +80,7 @@ type RawMembership = {
 type NormalizedMembership = {
   tenantName: string;
   tenantSlug: string;
+  logoUrl?: string;
   role: Role;
   customDomain?: string;
   workosOrganizationId?: string;
@@ -101,6 +114,7 @@ function normalizeMembership(membership: RawMembership): NormalizedMembership {
   );
   const tenantName =
     normalizeString(membership.tenantName ?? membership.tenant?.name) || tenantSlug;
+  const logoUrl = normalizeString(membership.logoUrl ?? membership.tenant?.logoUrl);
   const customDomain = normalizeSlug(
     membership.customDomain ?? membership.tenant?.customDomain
   );
@@ -112,6 +126,7 @@ function normalizeMembership(membership: RawMembership): NormalizedMembership {
     tenantName,
     tenantSlug,
     role: normalizeRole(membership.role),
+    ...(logoUrl ? { logoUrl } : {}),
     ...(customDomain ? { customDomain } : {}),
     ...(workosOrganizationId ? { workosOrganizationId } : {}),
   };
@@ -123,10 +138,28 @@ function membershipLogShape(membership: RawMembership) {
     slug: membership.slug,
     "tenant?.slug": membership.tenant?.slug,
     tenantName: membership.tenantName,
+    logoUrl: membership.logoUrl,
     role: membership.role,
     tenantId: membership.tenantId,
     workosOrganizationId: membership.workosOrganizationId,
   };
+}
+
+async function fetchCurrentWorkOSUser(userId?: string) {
+  if (!userId || !process.env.WORKOS_API_KEY) {
+    return null;
+  }
+
+  try {
+    const workos = new WorkOS(process.env.WORKOS_API_KEY);
+    return await workos.userManagement.getUser(userId);
+  } catch (error) {
+    console.warn("[dashboard-access] Could not refresh WorkOS user metadata", {
+      userId,
+      error,
+    });
+    return null;
+  }
 }
 
 async function listMembershipsForAuth(auth: {
@@ -160,20 +193,50 @@ export async function getDashboardAccess({
     redirect("/auth/sign-in");
   }
 
-  const workosUser = session.user as { id?: string; email?: string };
+  const workosUser = session.user as {
+    id?: string;
+    email?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    metadata?: Record<string, unknown>;
+  };
+  let currentUser = workosUser;
+  let platformRole = roleFromWorkOS({
+    user: session.user,
+    role: session.role,
+    roles: session.roles,
+  });
+
+  if (!canAccessDeveloper(platformRole)) {
+    const refreshedUser = await fetchCurrentWorkOSUser(workosUser.id);
+    if (refreshedUser) {
+      currentUser = refreshedUser as typeof workosUser;
+      platformRole = roleFromWorkOS({
+        user: refreshedUser,
+        metadata: refreshedUser.metadata,
+        role: session.role,
+        roles: session.roles,
+      });
+    }
+  }
+
+  const firstName = currentUser.firstName ?? currentUser.first_name ?? undefined;
+  const lastName = currentUser.lastName ?? currentUser.last_name ?? undefined;
+
   const authIdentity = {
     user: {
       id: workosUser.id,
       email: workosUser.email,
+      ...(firstName ? { firstName } : {}),
+      ...(lastName ? { lastName } : {}),
+      metadata: currentUser.metadata,
     },
     workosUserId: workosUser.id,
     email: workosUser.email,
     workosOrganizationId: session.organizationId,
-    ...(roleFromWorkOS({
-      user: session.user,
-      role: session.role,
-      roles: session.roles,
-    }) === "Developer"
+    ...(canAccessDeveloper(platformRole)
       ? { platformRole: "Developer" as const }
       : {}),
   };
@@ -234,10 +297,12 @@ export async function getDashboardAccess({
       ...authIdentity,
       tenantSlug: selectedMembership.tenantSlug,
       tenantName: selectedMembership.tenantName,
+      logoUrl: selectedMembership.logoUrl,
       role: selectedMembership.role,
       memberships: memberships.map((membership) => ({
         tenantName: membership.tenantName,
         tenantSlug: membership.tenantSlug,
+        logoUrl: membership.logoUrl,
         role: membership.role,
         customDomain: membership.customDomain,
         workosOrganizationId: membership.workosOrganizationId,

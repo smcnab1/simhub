@@ -2,15 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const targetState = vi.hoisted(() => ({
   memberships: [] as unknown[],
+  lastArgs: null as unknown,
 }));
 
 vi.mock("convex/nextjs", () => ({
-  fetchQuery: vi.fn(async () => targetState.memberships),
+  fetchQuery: vi.fn(async (_query, args) => {
+    targetState.lastArgs = args;
+    return targetState.memberships;
+  }),
 }));
 
 describe("dashboard target resolver", () => {
   beforeEach(() => {
     targetState.memberships = [];
+    targetState.lastArgs = null;
   });
 
   it("routes a single simhq member on uwl public pages to the simhq dashboard", async () => {
@@ -53,6 +58,43 @@ describe("dashboard target resolver", () => {
       kind: "dashboard",
       href: "https://uwl.rooms.simhq.app/dashboard",
     });
+  });
+
+  it("strips WorkOS user fields that Convex auth validation does not accept", async () => {
+    targetState.memberships = [
+      {
+        tenantName: "UWL",
+        tenantSlug: "uwl",
+        role: "Staff",
+      },
+    ];
+    const { getDashboardTargetForUser } = await import("@/lib/dashboard-target");
+
+    await getDashboardTargetForUser({
+      user: {
+        id: "user_2",
+        email: "uwl@example.com",
+        firstName: "Sam",
+        lastName: "McNab",
+        metadata: {},
+        createdAt: "2026-05-17T08:02:01.092Z",
+        emailVerified: true,
+      } as never,
+    });
+
+    expect(targetState.lastArgs).toMatchObject({
+      auth: {
+        user: {
+          id: "user_2",
+          email: "uwl@example.com",
+          firstName: "Sam",
+          lastName: "McNab",
+          metadata: {},
+        },
+      },
+    });
+    expect((targetState.lastArgs as { auth: { user: Record<string, unknown> } }).auth.user).not.toHaveProperty("createdAt");
+    expect((targetState.lastArgs as { auth: { user: Record<string, unknown> } }).auth.user).not.toHaveProperty("emailVerified");
   });
 
   it("sends multi-tenant users to the workspace selector", async () => {
