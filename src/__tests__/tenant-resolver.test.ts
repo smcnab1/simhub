@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAllowedTenantHost, resolveTenantFromHost } from "@/lib/tenant-resolver";
+import { isAllowedTenantHost, normalizeHost, resolveTenantFromHost } from "@/lib/tenant-resolver";
 
 describe("tenant host resolver", () => {
   it("treats the product root as no tenant", () => {
@@ -8,6 +8,19 @@ describe("tenant host resolver", () => {
 
   it("resolves tenant subdomains", () => {
     expect(resolveTenantFromHost("uwl.rooms.simhq.app").tenantSlug).toBe("uwl");
+  });
+
+  it("resolves rooms subdomains by slug without requiring a custom domain", () => {
+    expect(resolveTenantFromHost("uwl.rooms.simhq.app")).toMatchObject({
+      kind: "slug",
+      tenantSlug: "uwl",
+      customHost: null,
+    });
+  });
+
+  it("normalizes accidental URL-shaped host values", () => {
+    expect(normalizeHost("https://uwl.rooms.simhq.app")).toBe("uwl.rooms.simhq.app");
+    expect(resolveTenantFromHost("https://uwl.rooms.simhq.app").tenantSlug).toBe("uwl");
   });
 
   it("removes ports before resolving tenant subdomains", () => {
