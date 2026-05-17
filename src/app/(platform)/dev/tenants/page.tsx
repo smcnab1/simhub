@@ -2,10 +2,10 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "../../../../../convex/_generated/api";
 import { PlatformDevPage } from "@/components/platform/platform-dev-page";
 import {
+  createPlatformTenantAction,
   updatePlatformTenantAction,
 } from "@/lib/platform-actions";
 import { requirePlatformDeveloper } from "@/lib/platform-auth";
-import { TenantProvisioningForm } from "@/components/platform/tenant-provisioning-form";
 
 export default async function PlatformTenantsPage() {
   const auth = await requirePlatformDeveloper();
@@ -18,10 +18,18 @@ export default async function PlatformTenantsPage() {
       activeHref="/dev/tenants"
     >
       <section className="rounded-lg border border-border bg-card p-5">
-        <h2 className="text-base font-semibold text-foreground">Create Tenant</h2>
-        <div className="mt-4">
-          <TenantProvisioningForm />
-        </div>
+        <h2 className="text-base font-semibold text-foreground">Create tenant</h2>
+        <form action={createPlatformTenantAction} className="mt-4 grid gap-3 md:grid-cols-2">
+          <input name="name" placeholder="Tenant name" className="rounded-md border border-input bg-background px-3 py-2 text-sm" />
+          <input name="slug" placeholder="tenant-slug" className="rounded-md border border-input bg-background px-3 py-2 text-sm" />
+          <input name="timezone" placeholder="Europe/London" className="rounded-md border border-input bg-background px-3 py-2 text-sm" />
+          <input name="contactEmail" placeholder="admin@example.com" className="rounded-md border border-input bg-background px-3 py-2 text-sm" />
+          <input name="workosOrganizationId" placeholder="WorkOS organization ID" className="rounded-md border border-input bg-background px-3 py-2 text-sm" />
+          <input name="customDomain" placeholder="custom.example.com" className="rounded-md border border-input bg-background px-3 py-2 text-sm" />
+          <button className="md:col-span-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+            Create tenant
+          </button>
+        </form>
       </section>
 
       <section className="grid gap-3">

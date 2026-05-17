@@ -26,13 +26,7 @@ import { ChevronRightIcon } from "lucide-react"
 
 function isItemActive(item: NavigationItem, pathname: string): boolean {
   if (pathname === item.url) return true
-  if (
-    item.url !== "/dashboard" &&
-    item.url !== "/dev" &&
-    pathname.startsWith(item.url)
-  ) {
-    return true
-  }
+  if (item.url !== "/dashboard" && pathname.startsWith(item.url)) return true
   return item.items?.some((child) => isItemActive(child, pathname)) ?? false
 }
 
