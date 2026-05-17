@@ -51,7 +51,7 @@ export default async function Home({ searchParams }: HomeProps) {
             </p>
             <div className="mt-6">
               <a
-                href="/auth/dashboard"
+                href="/auth/sign-in?returnTo=/dashboard"
                 className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
               >
                 Staff sign in

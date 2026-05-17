@@ -23,7 +23,7 @@ export function PageShell({ children }: { children: ReactNode }) {
 export function PublicNav({
   tenantName,
   linkFor = (path: string) => path,
-  dashboardHref = "/auth/dashboard",
+  dashboardHref = "/auth/sign-in?returnTo=/dashboard",
 }: {
   tenantName?: string;
   linkFor?: (path: string) => string;
