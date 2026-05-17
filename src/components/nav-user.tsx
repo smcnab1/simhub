@@ -21,7 +21,22 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
-import { ChevronsUpDownIcon, LogOutIcon } from "lucide-react"
+import {
+  ChevronsUpDownIcon,
+  BookOpenIcon,
+  LifeBuoyIcon,
+  LightbulbIcon,
+  LogOutIcon,
+  MapIcon,
+  MegaphoneIcon,
+} from "lucide-react"
+import { useFeaturebase } from "@/hooks/use-featurebase"
+import {
+  FEATUREBASE_CHANGELOG_URL,
+  FEATUREBASE_FEEDBACK_URL,
+  FEATUREBASE_HELP_URL,
+  FEATUREBASE_ROADMAP_URL,
+} from "@/lib/featurebase"
 
 const visibleVersionTypes = new Set(["alpha", "beta", "dev", "test"])
 
@@ -35,6 +50,7 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
+  const featurebase = useFeaturebase()
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION
   const versionType = process.env.NEXT_PUBLIC_VERSION_TYPE?.toLowerCase()
   const showVersion = Boolean(
@@ -79,6 +95,43 @@ export function NavUser({
                 </div>
               </div>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="px-2 py-1.5 text-xs text-muted-foreground">
+              Support
+            </DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={(event) => {
+                event.preventDefault()
+                featurebase.show()
+              }}
+            >
+              <LifeBuoyIcon />
+              Help desk
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              render={<a href={FEATUREBASE_HELP_URL} target="_blank" rel="noreferrer" />}
+            >
+              <BookOpenIcon />
+              Knowledge base
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              render={<a href={FEATUREBASE_FEEDBACK_URL} target="_blank" rel="noreferrer" />}
+            >
+              <LightbulbIcon />
+              Feedback & Suggestions
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              render={<a href={FEATUREBASE_ROADMAP_URL} target="_blank" rel="noreferrer" />}
+            >
+              <MapIcon />
+              Roadmap
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              render={<a href={FEATUREBASE_CHANGELOG_URL} target="_blank" rel="noreferrer" />}
+            >
+              <MegaphoneIcon />
+              Changelog
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem render={<a href="/auth/sign-out" />}>
               <LogOutIcon />

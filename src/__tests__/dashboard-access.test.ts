@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dashboardState = vi.hoisted(() => ({
   redirectTo: "",
   session: { user: null } as {
-    user: { id?: string; email?: string } | null;
+    user: {
+      id?: string;
+      email?: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      name?: string | null;
+    } | null;
     organizationId?: string;
   } | null,
   memberships: [] as unknown[],
@@ -80,7 +86,12 @@ describe("dashboard access", () => {
 
   it("allows a user with tenantSlug simhq to access simhq.rooms.simhq.app/dashboard", async () => {
     dashboardState.session = {
-      user: { id: "workos-user-1", email: "user@example.com" },
+      user: {
+        id: "workos-user-1",
+        email: "user@example.com",
+        firstName: "Sam",
+        lastName: "McNab",
+      },
       organizationId: "org_simhq",
     };
     dashboardState.hostTenantSlug = "simhq";
@@ -100,6 +111,10 @@ describe("dashboard access", () => {
       auth: {
         tenantSlug: "simhq",
         tenantName: "SimHQ",
+        user: {
+          firstName: "Sam",
+          lastName: "McNab",
+        },
         role: "Staff",
       },
     });

@@ -3,7 +3,6 @@
 import { useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import type { DashboardAuth } from "@/components/dashboard-auth"
 import { getDashboardNavigation } from "@/lib/navigation"
@@ -26,6 +25,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { switchTenant } from "@/lib/tenant-actions"
+import { displayNameFromUser } from "@/lib/user-display"
 import {
   ChevronsUpDownIcon,
   Code2Icon,
@@ -67,6 +67,7 @@ export function AppSidebar({
     api.notifications.unseenCountByTenantSlug,
     { tenantSlug: auth.tenantSlug, auth }
   )
+  const userName = displayNameFromUser(auth.user ?? { email: auth.email })
 
   return (
     <Sidebar variant="sidebar" collapsible="offcanvas" {...props}>
@@ -169,8 +170,8 @@ export function AppSidebar({
       <SidebarFooter>
         <NavUser
           user={{
-            name: auth.email ?? "Signed in",
-            email: auth.role ?? "Member",
+            name: userName || "Signed in",
+            email: auth.email ?? auth.role ?? "Member",
             avatar: "",
           }}
         />

@@ -13,6 +13,13 @@ export type DashboardAuth = {
     logoUrl?: string;
     role: "Developer" | "Admin" | "Staff" | "Requester";
   }>;
+  user?: {
+    id?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    metadata?: Record<string, unknown>;
+  };
   platformRole?: "Developer";
   workosUserId?: string;
   email?: string;
