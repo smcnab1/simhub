@@ -33,6 +33,13 @@ export type DashboardAccess =
           customDomain?: string;
           workosOrganizationId?: string;
         }>;
+        user?: {
+          id?: string;
+          email?: string;
+          firstName?: string;
+          lastName?: string;
+          metadata?: Record<string, unknown>;
+        };
         workosUserId?: string;
         email?: string;
         platformRole?: "Developer";
@@ -169,10 +176,23 @@ export async function getDashboardAccess({
   }
 
   const workosUser = session.user as { id?: string; email?: string };
+  const workosProfile = session.user as {
+    firstName?: string | null;
+    lastName?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    name?: string | null;
+    metadata?: Record<string, unknown>;
+  };
+  const firstName = normalizeString(workosProfile.firstName ?? workosProfile.first_name);
+  const lastName = normalizeString(workosProfile.lastName ?? workosProfile.last_name);
   const authIdentity = {
     user: {
       id: workosUser.id,
       email: workosUser.email,
+      ...(firstName ? { firstName } : {}),
+      ...(lastName ? { lastName } : {}),
+      metadata: workosProfile.metadata,
     },
     workosUserId: workosUser.id,
     email: workosUser.email,
