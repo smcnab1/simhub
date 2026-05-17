@@ -22,5 +22,5 @@ export default async function PlatformDevLayout({
     );
   }
 
-  return <PlatformDevShell>{children}</PlatformDevShell>;
+  return <PlatformDevShell auth={access.auth}>{children}</PlatformDevShell>;
 }

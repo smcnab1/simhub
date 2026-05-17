@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { WorkOS } from "@workos-inc/node";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "../../convex/_generated/api";
 import { getCurrentUser, roleFromWorkOS } from "@/lib/auth";
@@ -144,6 +145,23 @@ function membershipLogShape(membership: RawMembership) {
   };
 }
 
+async function fetchCurrentWorkOSUser(userId?: string) {
+  if (!userId || !process.env.WORKOS_API_KEY) {
+    return null;
+  }
+
+  try {
+    const workos = new WorkOS(process.env.WORKOS_API_KEY);
+    return await workos.userManagement.getUser(userId);
+  } catch (error) {
+    console.warn("[dashboard-access] Could not refresh WorkOS user metadata", {
+      userId,
+      error,
+    });
+    return null;
+  }
+}
+
 async function listMembershipsForAuth(auth: {
   user?: {
     id?: string;
@@ -176,16 +194,24 @@ export async function getDashboardAccess({
   }
 
   const workosUser = session.user as { id?: string; email?: string };
-  const workosProfile = session.user as {
-    firstName?: string | null;
-    lastName?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-    name?: string | null;
-    metadata?: Record<string, unknown>;
-  };
-  const firstName = normalizeString(workosProfile.firstName ?? workosProfile.first_name);
-  const lastName = normalizeString(workosProfile.lastName ?? workosProfile.last_name);
+  let platformRole = roleFromWorkOS({
+    user: session.user,
+    role: session.role,
+    roles: session.roles,
+  });
+
+  if (!canAccessDeveloper(platformRole)) {
+    const refreshedUser = await fetchCurrentWorkOSUser(workosUser.id);
+    if (refreshedUser) {
+      platformRole = roleFromWorkOS({
+        user: refreshedUser,
+        metadata: refreshedUser.metadata,
+        role: session.role,
+        roles: session.roles,
+      });
+    }
+  }
+
   const authIdentity = {
     user: {
       id: workosUser.id,
@@ -197,11 +223,7 @@ export async function getDashboardAccess({
     workosUserId: workosUser.id,
     email: workosUser.email,
     workosOrganizationId: session.organizationId,
-    ...(roleFromWorkOS({
-      user: session.user,
-      role: session.role,
-      roles: session.roles,
-    }) === "Developer"
+    ...(canAccessDeveloper(platformRole)
       ? { platformRole: "Developer" as const }
       : {}),
   };
