@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TenantAwareTopbarLinks } from "@/components/tenant-aware-topbar-links";
 import { APP_NAME } from "@/lib/config";
+import { PublicNavLogo } from "@/components/public-nav-logo";
 
 export const pageWrapClass = "mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8";
 export const sectionCardClass = "app-surface rounded-2xl p-4";
@@ -22,21 +23,26 @@ export function PageShell({ children }: { children: ReactNode }) {
 
 export function PublicNav({
   tenantName,
+  tenantLogoUrl,
   linkFor = (path: string) => path,
   dashboardHref = "/auth/sign-in?returnTo=/dashboard",
 }: {
   tenantName?: string;
+  tenantLogoUrl?: string;
   linkFor?: (path: string) => string;
   dashboardHref?: string;
 }) {
   const displayName = tenantName ?? APP_NAME;
   const hasTenant = Boolean(tenantName);
+  const logoAlt = tenantName ? `${tenantName} logo` : `${APP_NAME} logo`;
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/80 bg-card/90 backdrop-blur-xl">
       <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <Link href={linkFor("/")} className="flex items-center gap-2 text-lg font-bold tracking-tight">
-          <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">S</span>
+          <span className="relative flex size-9 items-center justify-center overflow-hidden rounded-xl shadow-lg shadow-primary/20">
+            <PublicNavLogo logoUrl={tenantLogoUrl} alt={logoAlt} />
+          </span>
           {displayName}
         </Link>
         <div className="flex items-center gap-2 text-sm">

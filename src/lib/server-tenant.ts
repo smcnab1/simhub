@@ -9,6 +9,7 @@ import {
 type PublicTenant = {
   slug: string;
   name: string;
+  logoUrl?: string | null;
   active: boolean;
 } | null;
 
@@ -18,6 +19,7 @@ export type ResolvedTenant =
       tenant: {
         slug: string;
         name: string;
+        logoUrl?: string;
       };
       source: "slug" | "custom" | "fallback";
     }
@@ -109,7 +111,15 @@ export async function resolveTenantForRequest(
       });
 
       return tenant?.active
-        ? { ok: true, tenant: { slug: tenant.slug, name: tenant.name }, source: "slug" }
+        ? {
+            ok: true,
+            tenant: {
+              slug: tenant.slug,
+              name: tenant.name,
+              ...(tenant.logoUrl ? { logoUrl: tenant.logoUrl } : {}),
+            },
+            source: "slug",
+          }
         : {
             ok: false,
             reason: "not_found",
@@ -151,7 +161,15 @@ export async function resolveTenantForRequest(
       });
 
       return tenant?.active
-        ? { ok: true, tenant: { slug: tenant.slug, name: tenant.name }, source: "custom" }
+        ? {
+            ok: true,
+            tenant: {
+              slug: tenant.slug,
+              name: tenant.name,
+              ...(tenant.logoUrl ? { logoUrl: tenant.logoUrl } : {}),
+            },
+            source: "custom",
+          }
         : {
             ok: false,
             reason: "not_found",
@@ -205,7 +223,15 @@ export async function resolveTenantForRequest(
     });
 
     return tenant?.active
-      ? { ok: true, tenant: { slug: tenant.slug, name: tenant.name }, source: "fallback" }
+      ? {
+          ok: true,
+          tenant: {
+            slug: tenant.slug,
+            name: tenant.name,
+            ...(tenant.logoUrl ? { logoUrl: tenant.logoUrl } : {}),
+          },
+          source: "fallback",
+        }
       : { ok: false, reason: "not_found", requestedTenantSlug: tenantSlug };
   } catch (error) {
     logTenantResolution({

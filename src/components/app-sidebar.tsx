@@ -7,6 +7,8 @@ import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import type { DashboardAuth } from "@/components/dashboard-auth"
 import { getDashboardNavigation } from "@/lib/navigation"
+import Image from "next/image";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +27,6 @@ import {
 } from "@/components/ui/sidebar"
 import { switchTenant } from "@/lib/tenant-actions"
 import {
-  Building2Icon,
   ChevronsUpDownIcon,
   LifeBuoyIcon,
   ShieldCheckIcon,
@@ -46,9 +47,16 @@ export function AppSidebar({
           {
             tenantName: auth.tenantName ?? auth.tenantSlug,
             tenantSlug: auth.tenantSlug,
+            logoUrl: auth.logoUrl,
             role: auth.role ?? "Staff",
           },
         ]
+  const tenant = memberships.find(
+    (membership) => membership.tenantSlug === auth.tenantSlug
+  )
+  const tenantLogo = tenant?.logoUrl?.trim()
+    ? tenant.logoUrl
+    : "/logo-rooms.png"
   const navGroups = getDashboardNavigation({
     role: auth.role,
     platformRole: auth.platformRole,
@@ -73,8 +81,23 @@ export function AppSidebar({
                   />
                 }
               >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <Building2Icon className="size-4" />
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-white text-sidebar-primary-foreground">
+                  <span className="relative flex size-9 items-center justify-center overflow-hidden rounded-xl bg-white">
+                    <Image
+                      src={tenantLogo}
+                      alt={tenant?.tenantName ?? "Workspace"}
+                      width={32}
+                      height={32}
+                      className="object-contain scale-110"
+                      onError={(event) => {
+                        if (!event.currentTarget.src.endsWith("/logo-rooms.png")) {
+                          event.currentTarget.src = "/logo-rooms.png"
+                        }
+                      }}
+                      priority
+                      unoptimized
+                    />
+                  </span>
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">

@@ -5,10 +5,12 @@ import { createContext, type ReactNode, useContext } from "react";
 export type DashboardAuth = {
   tenantSlug: string;
   tenantName?: string;
+  logoUrl?: string;
   role?: "Developer" | "Admin" | "Staff" | "Requester";
   memberships?: Array<{
     tenantName: string;
     tenantSlug: string;
+    logoUrl?: string;
     role: "Developer" | "Admin" | "Staff" | "Requester";
   }>;
   platformRole?: "Developer";

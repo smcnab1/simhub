@@ -23,10 +23,12 @@ export type DashboardAccess =
       auth: {
         tenantSlug: string;
         tenantName?: string;
+        logoUrl?: string;
         role: Role;
         memberships: Array<{
           tenantName: string;
           tenantSlug: string;
+          logoUrl?: string;
           role: Role;
           customDomain?: string;
           workosOrganizationId?: string;
@@ -56,9 +58,11 @@ type RawMembership = {
   tenant?: {
     name?: unknown;
     slug?: unknown;
+    logoUrl?: unknown;
     customDomain?: unknown;
     workosOrganizationId?: unknown;
   } | null;
+  logoUrl?: unknown;
   role?: unknown;
   customDomain?: unknown;
   workosOrganizationId?: unknown;
@@ -68,6 +72,7 @@ type RawMembership = {
 type NormalizedMembership = {
   tenantName: string;
   tenantSlug: string;
+  logoUrl?: string;
   role: Role;
   customDomain?: string;
   workosOrganizationId?: string;
@@ -101,6 +106,7 @@ function normalizeMembership(membership: RawMembership): NormalizedMembership {
   );
   const tenantName =
     normalizeString(membership.tenantName ?? membership.tenant?.name) || tenantSlug;
+  const logoUrl = normalizeString(membership.logoUrl ?? membership.tenant?.logoUrl);
   const customDomain = normalizeSlug(
     membership.customDomain ?? membership.tenant?.customDomain
   );
@@ -112,6 +118,7 @@ function normalizeMembership(membership: RawMembership): NormalizedMembership {
     tenantName,
     tenantSlug,
     role: normalizeRole(membership.role),
+    ...(logoUrl ? { logoUrl } : {}),
     ...(customDomain ? { customDomain } : {}),
     ...(workosOrganizationId ? { workosOrganizationId } : {}),
   };
@@ -123,6 +130,7 @@ function membershipLogShape(membership: RawMembership) {
     slug: membership.slug,
     "tenant?.slug": membership.tenant?.slug,
     tenantName: membership.tenantName,
+    logoUrl: membership.logoUrl,
     role: membership.role,
     tenantId: membership.tenantId,
     workosOrganizationId: membership.workosOrganizationId,
@@ -234,10 +242,12 @@ export async function getDashboardAccess({
       ...authIdentity,
       tenantSlug: selectedMembership.tenantSlug,
       tenantName: selectedMembership.tenantName,
+      logoUrl: selectedMembership.logoUrl,
       role: selectedMembership.role,
       memberships: memberships.map((membership) => ({
         tenantName: membership.tenantName,
         tenantSlug: membership.tenantSlug,
+        logoUrl: membership.logoUrl,
         role: membership.role,
         customDomain: membership.customDomain,
         workosOrganizationId: membership.workosOrganizationId,

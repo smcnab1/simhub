@@ -9,6 +9,8 @@ export type DashboardTargetAuth = {
   user?: {
     id?: string;
     email?: string;
+    firstName?: string | null;
+    lastName?: string | null;
     metadata?: Record<string, unknown>;
   } | null;
   workosUserId?: string;
@@ -66,6 +68,18 @@ function normalizeMembership(membership: RawMembership) {
   };
 }
 
+function safeAuthUser(user: DashboardTargetAuth["user"]) {
+  if (!user) return undefined;
+
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName ?? undefined,
+    lastName: user.lastName ?? undefined,
+    metadata: user.metadata,
+  };
+}
+
 function isLocalOrPreviewDashboardHost(host: string) {
   return (
     host === "localhost" ||
@@ -102,7 +116,7 @@ export async function getDashboardTargetForUser(
   try {
     memberships = (await fetchQuery(api.tenants.listMembershipsForAuth, {
       auth: {
-        user: userAuth.user ?? undefined,
+        user: safeAuthUser(userAuth.user),
         workosUserId,
         email,
         workosOrganizationId: userAuth.workosOrganizationId ?? userAuth.organizationId,

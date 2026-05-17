@@ -35,6 +35,7 @@ export default async function Home({ searchParams }: HomeProps) {
     <>
       <PublicNav
         tenantName={tenant.ok ? tenant.tenant.name : undefined}
+        tenantLogoUrl={tenant.ok ? tenant.tenant.logoUrl : undefined}
         linkFor={linkFor}
       />
       <PageShell>

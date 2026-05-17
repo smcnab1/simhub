@@ -24,6 +24,7 @@ export const authContextValidator = v.object({
   ),
   tenantSlug: v.optional(v.string()),
   tenantName: v.optional(v.string()),
+  logoUrl: v.optional(v.string()),
   platformRole: v.optional(v.literal("Developer")),
   role: v.optional(
     v.union(
@@ -38,6 +39,7 @@ export const authContextValidator = v.object({
       v.object({
         tenantName: v.string(),
         tenantSlug: v.string(),
+        logoUrl: v.optional(v.string()),
         tenantId: v.optional(v.string()),
         customDomain: v.optional(v.string()),
         workosOrganizationId: v.optional(v.string()),
@@ -66,11 +68,13 @@ export type ConvexAuthContext = {
   };
   tenantSlug?: string;
   tenantName?: string;
+  logoUrl?: string;
   platformRole?: "Developer";
   role?: TenantRole;
   memberships?: Array<{
     tenantName: string;
     tenantSlug: string;
+    logoUrl?: string;
     tenantId?: string;
     customDomain?: string;
     workosOrganizationId?: string;

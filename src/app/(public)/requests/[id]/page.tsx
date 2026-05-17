@@ -30,7 +30,10 @@ export default async function RequestTrackingPage({
 
   return (
     <>
-      <PublicNav tenantName={tenant.tenant.name} />
+      <PublicNav
+        tenantName={tenant.tenant.name}
+        tenantLogoUrl={tenant.tenant.logoUrl}
+      />
       <PageShell>
         <RequestDetail id={id} tenantSlug={tenant.tenant.slug} publicView />
       </PageShell>
