@@ -97,15 +97,23 @@ export async function getDashboardTargetForUser(
 ): Promise<DashboardTarget> {
   const workosUserId = userAuth.workosUserId ?? userAuth.user?.id;
   const email = userAuth.email ?? userAuth.user?.email;
-  const memberships = await fetchQuery(api.tenants.listMembershipsForAuth, {
-    auth: {
-      user: userAuth.user ?? undefined,
-      workosUserId,
-      email,
-      workosOrganizationId: userAuth.workosOrganizationId ?? userAuth.organizationId,
-      platformRole: userAuth.platformRole,
-    },
-  });
+  let memberships: RawMembership[];
+
+  try {
+    memberships = (await fetchQuery(api.tenants.listMembershipsForAuth, {
+      auth: {
+        user: userAuth.user ?? undefined,
+        workosUserId,
+        email,
+        workosOrganizationId: userAuth.workosOrganizationId ?? userAuth.organizationId,
+        platformRole: userAuth.platformRole,
+      },
+    })) as RawMembership[];
+  } catch (error) {
+    console.error("[dashboard-target] Could not load tenant memberships", error);
+    return { kind: "access", href: "/auth/access" };
+  }
+
   const activeMemberships = (memberships as RawMembership[])
     .filter(isActiveMembership)
     .map(normalizeMembership)
