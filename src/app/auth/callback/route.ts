@@ -1,7 +1,12 @@
 import { WorkOS } from "@workos-inc/node";
 import { sealData, unsealData } from "iron-session";
 import { type NextRequest, NextResponse } from "next/server";
-import { getSafeAuthReturnUrl } from "@/lib/auth-redirects";
+import {
+  getAuthRequestHost,
+  getSafeAuthReturnUrl,
+  shouldResolveDashboardTarget,
+} from "@/lib/auth-redirects";
+import { getDashboardTargetForUser } from "@/lib/dashboard-target";
 
 type PKCEState = {
   codeVerifier: string;
@@ -63,7 +68,17 @@ export async function GET(request: NextRequest) {
     },
   );
 
-  const response = NextResponse.redirect(getSafeAuthReturnUrl(returnPathname, request));
+  const targetUrl = shouldResolveDashboardTarget(returnPathname)
+    ? await getDashboardTargetForUser(
+        {
+          user,
+          workosUserId: user.id,
+          email: user.email,
+        },
+        getAuthRequestHost(request)
+      ).then((target) => new URL(target.href, request.url))
+    : getSafeAuthReturnUrl(returnPathname, request);
+  const response = NextResponse.redirect(targetUrl);
   const sessionCookieName = process.env.WORKOS_COOKIE_NAME || "wos-session";
   response.cookies.set(sessionCookieName, encryptedSession, cookieSettings(request.url));
 

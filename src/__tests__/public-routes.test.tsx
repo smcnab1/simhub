@@ -20,6 +20,7 @@ vi.mock("@/lib/server-tenant", () => ({
 
 vi.mock("@/lib/server-tenant-url", () => ({
   getTenantAwareLinkFor: vi.fn(async () => (path: string) => path),
+  getPublicDashboardHref: vi.fn(async () => "/auth/dashboard"),
 }));
 
 vi.mock("@/lib/auth", () => ({

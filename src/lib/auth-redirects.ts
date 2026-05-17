@@ -39,3 +39,23 @@ export function getSafeAuthReturnUrl(returnPathname: string | undefined, request
   const url = new URL(returnPathname || "/dashboard", origin);
   return url.origin === origin ? url : new URL("/dashboard", origin);
 }
+
+export function getAuthRequestHost(request: NextRequest) {
+  return (
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    request.nextUrl.host
+  );
+}
+
+export function shouldResolveDashboardTarget(returnPathname: string | undefined) {
+  const returnTo = returnPathname || "/dashboard";
+  const url = new URL(returnTo, "https://simhq.local");
+  const pathname = url.pathname.replace(/\/+$/, "") || "/";
+
+  return (
+    pathname === "/dashboard" ||
+    pathname === "/auth/sign-in" ||
+    pathname === "/auth/dashboard"
+  );
+}

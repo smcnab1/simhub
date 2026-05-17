@@ -2,6 +2,7 @@ import { RequestDetail } from "@/components/request-detail";
 import { PublicNav, PageShell } from "@/components/ui";
 import { TenantNotFound } from "@/components/tenant-not-found";
 import { resolveTenantForRequest } from "@/lib/server-tenant";
+import { getPublicDashboardHref } from "@/lib/server-tenant-url";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +28,11 @@ export default async function RequestTrackingPage({
       />
     );
   }
+  const dashboardHref = await getPublicDashboardHref();
 
   return (
     <>
-      <PublicNav tenantName={tenant.tenant.name} />
+      <PublicNav tenantName={tenant.tenant.name} dashboardHref={dashboardHref} />
       <PageShell>
         <RequestDetail id={id} tenantSlug={tenant.tenant.slug} publicView />
       </PageShell>

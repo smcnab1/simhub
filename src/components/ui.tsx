@@ -23,9 +23,11 @@ export function PageShell({ children }: { children: ReactNode }) {
 export function PublicNav({
   tenantName,
   linkFor = (path: string) => path,
+  dashboardHref = "/auth/dashboard",
 }: {
   tenantName?: string;
   linkFor?: (path: string) => string;
+  dashboardHref?: string;
 }) {
   const displayName = tenantName ?? APP_NAME;
   const hasTenant = Boolean(tenantName);
@@ -44,7 +46,7 @@ export function PublicNav({
               <Link href={linkFor("/book")} className="rounded-lg bg-primary px-3 py-2 font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90">Book a Room</Link>
             </>
           ) : null}
-          <a href={`/auth/sign-in?returnTo=${encodeURIComponent(linkFor("/dashboard"))}`} className="hidden rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary sm:inline-flex">Staff sign in</a>
+          <a href={dashboardHref} className="hidden rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted hover:text-primary sm:inline-flex">Dashboard</a>
           <ThemeToggle />
         </div>
       </nav>
